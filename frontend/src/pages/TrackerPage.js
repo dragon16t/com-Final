@@ -43,7 +43,7 @@ function LoginGate({ onLogin }) {
     e?.preventDefault();
     setError(''); setLoading(true);
     try {
-      const r = await axios.post(`${API}/api/customer/send-otp`, { email: email.trim().toLowerCase() });
+      const r = await axios.post(`${API}/api/auth/send-otp`, { email: email.trim().toLowerCase() });
       setMsg(r.data.message || 'Code sent to your email.');
       setStep('otp');
     } catch (e2) {
@@ -55,7 +55,7 @@ function LoginGate({ onLogin }) {
     e?.preventDefault();
     setError(''); setLoading(true);
     try {
-      const r = await axios.post(`${API}/api/customer/verify-otp`, { email: email.trim().toLowerCase(), otp: otp.trim() });
+      const r = await axios.post(`${API}/api/auth/verify-otp`, { email: email.trim().toLowerCase(), otp: otp.trim() });
       try {
         localStorage.setItem(TOKEN_KEY, r.data.token);
         localStorage.setItem(USER_KEY, JSON.stringify(r.data.user));

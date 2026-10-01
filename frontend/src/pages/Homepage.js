@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowRight, ChevronRight, Flame, Sparkles, ShoppingCart, Star, Truck, Shield, Check, Clock } from 'lucide-react';
+import { ArrowRight, ChevronRight, Flame, Sparkles, ShoppingCart, Star, Truck, Shield, Check, Clock, ScanFace, ClipboardList, BarChart3, Lightbulb, ChevronLeft, TrendingUp } from 'lucide-react';
 import { useTracking } from '../providers/TrackingProvider';
 import SearchBar from '../components/SearchBar';
 import TrustStrip from '../components/TrustStrip';
@@ -648,35 +648,237 @@ function Homepage() {
   );
 }
 
+const TRACKER_SKIN = {
+  pores: 'https://images.unsplash.com/photo-1541752857837-f8a0154fd092?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
+  pores2: 'https://images.unsplash.com/photo-1710580889701-9fa8f2cd5927?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
+  acne: 'https://images.unsplash.com/photo-1604604891787-6818365d208a?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
+  acne2: 'https://images.pexels.com/photos/8589763/pexels-photo-8589763.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=400&w=400',
+  darkspot: 'https://images.unsplash.com/photo-1723540634462-528708cc17aa?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
+  healthy: 'https://images.unsplash.com/photo-1609357912334-e96886c0212b?crop=entropy&cs=srgb&fm=jpg&q=85&w=500',
+};
+
+const TRACKER_PRODUCTS = [
+  { label: 'Cleanser', when: 'AM / PM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1780326845/celesta-glow/products/9cbffd4042f04e7d816d1825192c0ab4.webp' },
+  { label: 'Serum', when: 'AM / PM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1780327224/celesta-glow/products/201e80b87d604c84ad25548b6a4783c6.webp' },
+  { label: 'Moisturizer', when: 'AM / PM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1790225020/celesta-glow/products/1a2b9e09601541cfa94430cac3cb657d.jpg' },
+  { label: 'Sunscreen', when: 'AM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1780327417/celesta-glow/products/e199648f7c6f4fe2b91f7a408211758e.jpg' },
+];
+
+function MetricRow({ icon: Icon, label, value, up }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon size={13} className="text-emerald-600 shrink-0" />
+      <span className="text-[11px] text-stone-600 w-[62px] shrink-0 truncate">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+        <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600" style={{ width: `${value}%` }} />
+      </div>
+      <span className="text-[11px] font-bold text-stone-800 w-6 text-right">{value}</span>
+      <span className="text-[10px] font-semibold text-emerald-600 w-7 text-right">↑{up}</span>
+    </div>
+  );
+}
+
+function SkinScoreRing({ score = 85 }) {
+  const r = 34, c = 2 * Math.PI * r, off = c - (score / 100) * c;
+  return (
+    <div className="relative w-[92px] h-[92px] shrink-0">
+      <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
+        <circle cx="40" cy="40" r={r} fill="none" stroke="#e7f2ec" strokeWidth="7" />
+        <circle cx="40" cy="40" r={r} fill="none" stroke="#059669" strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={off} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-black text-stone-900 leading-none">{score}</span>
+        <span className="text-[10px] text-stone-400 font-semibold">/100</span>
+      </div>
+    </div>
+  );
+}
+
+function DetailTile({ img, label, level, pct, warn }) {
+  return (
+    <div>
+      <div className="relative rounded-xl overflow-hidden aspect-square bg-stone-100">
+        <img src={img} alt={label} loading="lazy" className="w-full h-full object-cover" />
+      </div>
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-[11px] font-bold text-stone-800">{label}</span>
+        <ChevronRight size={13} className="text-stone-400" />
+      </div>
+      <span className={`text-[10px] font-semibold ${warn ? 'text-amber-600' : 'text-emerald-600'}`}>{level}</span>
+      <div className="h-1 rounded-full bg-stone-100 overflow-hidden mt-1">
+        <div className={`h-full rounded-full ${warn ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function TrackerPromo() {
   const loggedIn = (typeof window !== 'undefined') && !!localStorage.getItem('cg_auth_token');
+  const features = [
+    { icon: ScanFace, label: 'Skin Analysis' },
+    { icon: ClipboardList, label: 'Personalised Routine' },
+    { icon: BarChart3, label: 'Track Progress' },
+    { icon: Lightbulb, label: 'Tips & Suggestions' },
+  ];
+  const metrics = [
+    { icon: ScanFace, label: 'Pores', value: 72, up: 28 },
+    { icon: Sparkles, label: 'Acne', value: 80, up: 35 },
+    { icon: Star, label: 'Dark Spots', value: 78, up: 32 },
+    { icon: Check, label: 'Even Tone', value: 88, up: 40 },
+    { icon: TrendingUp, label: 'Fine Lines', value: 76, up: 30 },
+    { icon: Shield, label: 'Hydration', value: 82, up: 33 },
+  ];
+  const strip = [
+    { img: TRACKER_SKIN.pores, label: 'Pores' },
+    { img: TRACKER_SKIN.acne, label: 'Acne' },
+    { img: TRACKER_SKIN.darkspot, label: 'Dark Spots' },
+    { img: TRACKER_SKIN.pores2, label: 'Fine Lines' },
+  ];
+
   return (
-    <section className="max-w-7xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6" data-testid="home-tracker-promo">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-600 p-5 sm:p-7 text-white">
-        <div className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-white/10" />
-        <div className="absolute -right-2 bottom-2 w-24 h-24 rounded-full bg-white/10" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-          <div className="flex-1 min-w-0">
-            <div className="inline-flex items-center gap-1.5 bg-white/15 rounded-full px-3 py-1 mb-2">
-              <Sparkles size={14} />
-              <span className="text-[11px] font-black uppercase tracking-wider">New · AI Skin Tracker</span>
+    <section className="max-w-7xl mx-auto px-3 sm:px-6 pt-6 sm:pt-10" data-testid="home-tracker-promo">
+      <div className="rounded-[28px] border border-emerald-100 bg-gradient-to-b from-emerald-50/70 via-white to-white p-5 sm:p-8 lg:p-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-6 items-stretch">
+
+          {/* ---------- Column 1: copy + features + CTA ---------- */}
+          <div className="lg:col-span-4 flex flex-col">
+            <div className="inline-flex items-center gap-1.5 self-start bg-white border border-emerald-200 rounded-full px-3 py-1 mb-5 shadow-sm">
+              <Sparkles size={14} className="text-emerald-600" />
+              <span className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-700">New · AI Skin Tracker</span>
             </div>
-            <h2 className="font-heading text-xl sm:text-2xl font-black leading-tight">
-              Track your glow-up with daily AI tasks & photo progress
+            <h2 className="font-heading text-4xl sm:text-5xl font-black leading-[1.02] text-stone-900">
+              Track your<br />
+              <span className="text-emerald-600 relative">glow-up
+                <span className="absolute left-0 -bottom-1 h-2 w-full bg-emerald-200/70 -z-0 rounded" style={{ zIndex: -1 }} />
+              </span>
             </h2>
-            <p className="text-sm text-white/90 mt-1.5">
-              <b>FREE for 1 month</b> on orders ≥ ₹499 — then just ₹499/month (auto-pay). Personalised routine, do's & don'ts, and AI improvement suggestions every 3 days.
+            <p className="text-[15px] text-stone-600 mt-4 max-w-sm leading-relaxed">
+              AI analyses your skin, gives personalised routines and shows real results.
             </p>
+            <p className="text-[13px] text-stone-500 mt-2 max-w-sm leading-relaxed">
+              <b className="text-emerald-700">FREE for 1 month</b> on orders ≥ ₹499 — then just ₹499/month (auto-pay). Do's &amp; don'ts and AI improvement suggestions every 3 days.
+            </p>
+
+            <div className="grid grid-cols-2 gap-x-6 gap-y-5 mt-7">
+              {features.map((f) => (
+                <div key={f.label} className="flex flex-col items-center sm:items-start text-center sm:text-left">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mb-2">
+                    <f.icon size={22} className="text-emerald-600" />
+                  </div>
+                  <span className="text-[13px] font-bold text-stone-700 leading-tight">{f.label}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-auto pt-8">
+              <Link to="/tracker" data-testid="home-tracker-cta"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-[15px] px-7 py-4 rounded-full transition-colors shadow-lg shadow-emerald-700/20">
+                <Sparkles size={18} /> {loggedIn ? 'Open my tracker' : 'Start free tracker'} <ArrowRight size={18} />
+              </Link>
+              <div className="mt-3">
+                <Link to="/tracker" data-testid="home-tracker-login" className="text-[13px] font-semibold text-emerald-700 hover:text-emerald-900 underline underline-offset-4">
+                  {loggedIn ? 'View my progress' : 'Login to access your progress'}
+                </Link>
+              </div>
+            </div>
           </div>
-          <div className="shrink-0 flex flex-col gap-2 w-full sm:w-auto">
-            <Link to="/tracker" data-testid="home-tracker-cta"
-              className="inline-flex items-center justify-center gap-2 bg-white text-emerald-700 font-black text-sm px-5 py-3 rounded-xl hover:bg-emerald-50 transition-colors">
-              <Sparkles size={16} /> {loggedIn ? 'Open my tracker' : 'Start free tracker'}
-            </Link>
-            <Link to="/tracker" className="text-center text-xs font-bold text-white/90 hover:text-white underline underline-offset-2">
-              {loggedIn ? 'View my progress' : 'Login to access progress'}
-            </Link>
+
+          {/* ---------- Column 2: photo strip ---------- */}
+          <div className="hidden lg:flex lg:col-span-2 flex-col gap-3">
+            {strip.map((s) => (
+              <div key={s.label} className="relative flex-1 rounded-2xl overflow-hidden bg-stone-100 min-h-[88px]">
+                <img src={s.img} alt={s.label} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
+                <span className="absolute left-3 bottom-2 text-white text-[12px] font-bold drop-shadow">{s.label}</span>
+                <div className="absolute right-2 bottom-2 w-5 h-5 border-2 border-white/70 rounded-md" />
+              </div>
+            ))}
           </div>
+
+          {/* ---------- Column 3: Skin Analysis card ---------- */}
+          <div className="lg:col-span-3">
+            <div className="bg-white rounded-3xl border border-stone-100 shadow-xl shadow-stone-200/50 p-3.5 h-full flex flex-col">
+              <div className="flex items-center justify-between px-1 pb-2.5">
+                <ChevronLeft size={16} className="text-stone-400" />
+                <span className="text-[13px] font-black text-stone-900">Skin Analysis</span>
+                <span className="text-[10px] text-stone-400 font-semibold">12 Sep 2026</span>
+              </div>
+              {/* before / after */}
+              <div className="relative rounded-2xl overflow-hidden aspect-[4/3] bg-stone-100">
+                <img src={TRACKER_SKIN.acne} alt="Day 1" className="absolute inset-0 w-1/2 h-full object-cover" />
+                <img src={TRACKER_SKIN.healthy} alt="Day 30" className="absolute right-0 top-0 w-1/2 h-full object-cover" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
+                  <ChevronLeft size={11} className="text-stone-500" /><ChevronRight size={11} className="text-stone-500 -ml-1" />
+                </div>
+                <div className="absolute left-0 top-0 bottom-0 w-px bg-white/80 left-1/2" />
+                <span className="absolute left-2.5 bottom-2 text-white text-[11px] font-bold drop-shadow">Day 1</span>
+                <span className="absolute right-2.5 bottom-2 text-white text-[11px] font-bold drop-shadow">Day 30</span>
+              </div>
+              {/* score + metrics */}
+              <div className="flex items-center gap-3 mt-3.5">
+                <div className="flex flex-col items-center">
+                  <span className="text-[11px] font-semibold text-stone-500 mb-1">Skin Score</span>
+                  <SkinScoreRing score={85} />
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  {metrics.map((m) => <MetricRow key={m.label} {...m} />)}
+                </div>
+              </div>
+              {/* progress chart */}
+              <div className="mt-4 pt-3.5 border-t border-stone-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[12px] font-bold text-stone-800">Your Skin Progress</span>
+                  <span className="text-[10px] font-black text-white bg-emerald-600 rounded-md px-2 py-0.5 leading-tight text-center">+42%<br /><span className="font-semibold">Improvement</span></span>
+                </div>
+                <svg viewBox="0 0 300 70" className="w-full h-[58px]">
+                  <defs>
+                    <linearGradient id="trk-grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#059669" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#059669" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M10,55 L100,42 L190,28 L290,12 L290,70 L10,70 Z" fill="url(#trk-grad)" />
+                  <polyline points="10,55 100,42 190,28 290,12" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  {[[10,55],[100,42],[190,28],[290,12]].map(([x,y],i)=>(<circle key={i} cx={x} cy={y} r="3.5" fill="#fff" stroke="#059669" strokeWidth="2" />))}
+                </svg>
+                <div className="flex justify-between text-[9px] text-stone-400 font-semibold px-1">
+                  <span>Day 1</span><span>Day 7</span><span>Day 14</span><span>Day 30</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ---------- Column 4: Detailed Analysis + Recommended ---------- */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
+            <div className="bg-white rounded-3xl border border-stone-100 shadow-xl shadow-stone-200/50 p-4">
+              <span className="text-[13px] font-black text-stone-900">Detailed Analysis</span>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <DetailTile img={TRACKER_SKIN.pores} label="Pores" level="Moderate" pct={55} warn />
+                <DetailTile img={TRACKER_SKIN.acne2} label="Acne" level="Mild" pct={30} />
+                <DetailTile img={TRACKER_SKIN.darkspot} label="Dark Spots" level="Moderate" pct={55} warn />
+                <DetailTile img={TRACKER_SKIN.pores2} label="Fine Lines" level="Mild" pct={30} />
+              </div>
+            </div>
+            <div className="bg-white rounded-3xl border border-stone-100 shadow-xl shadow-stone-200/50 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[13px] font-black text-stone-900">Recommended For You</span>
+                <Link to="/shop" className="text-[11px] font-bold text-emerald-700 underline underline-offset-2">See all</Link>
+              </div>
+              <div className="grid grid-cols-4 gap-2 mt-3">
+                {TRACKER_PRODUCTS.map((p) => (
+                  <div key={p.label} className="text-center">
+                    <div className="rounded-xl bg-stone-50 border border-stone-100 aspect-square flex items-center justify-center p-1.5 overflow-hidden">
+                      <img src={p.img} alt={p.label} loading="lazy" className="w-full h-full object-contain" />
+                    </div>
+                    <span className="block text-[10px] font-bold text-stone-700 mt-1 leading-tight truncate">{p.label}</span>
+                    <span className="block text-[9px] text-stone-400 font-semibold">{p.when}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>

@@ -189,8 +189,74 @@ test_plan:
   test_all: false
   test_priority: "high_first"
 
+  - task: "Customer email OTP login (send-otp / verify-otp) works end to end incl Gmail SMTP"
+    implemented: true
+    working: true
+    file: "routes/customer_auth.py, services/email_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "User reported login via email showed 'not found'. Root cause: TrackerPage.js called /api/customer/send-otp & /api/customer/verify-otp (404) instead of /api/auth/*. Fixed frontend paths. Added Gmail SMTP + EMAIL_FROM creds to backend .env. Please verify POST /api/auth/send-otp returns success+delivered:true (SMTP), and the verify-otp flow returns a session token for a valid OTP (you can read the OTP from backend logs or DB customer_otps)."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: POST /api/auth/send-otp with {email: qa_tester@example.com} returns HTTP 200 with success=true and delivered=true (Gmail SMTP working). Read OTP (522795) from MongoDB customer_otps collection. POST /api/auth/verify-otp with the OTP returns HTTP 200 with success=true, a valid session token (mFOnT9-VozDGlADXoGaN2jM8UMOodhFva7irJFxuFMc), and user object with correct email. Confirmed OLD wrong path POST /api/customer/send-otp returns HTTP 404 as expected. Backend logs show '[OTP] sent to qa_tester@example.com via smtp'. Complete OTP login flow working correctly end-to-end."
+
+  - task: "Admin concern/category/niche edits reflect on public endpoints"
+    implemented: true
+    working: true
+    file: "routes/concerns.py, frontend/src/utils/apiCache.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Admin PUT /api/admin/concerns/{slug} and /api/admin/categories/{slug} write to the SAME db.concerns/db.categories that public GET /api/concerns & /api/categories read. Frontend was caching these 5 min in localStorage; capped client TTL to 30s for concerns/categories/niches/subcategories/site-settings. Please verify: editing a concern/category via admin PUT (X-Admin-Token: celestaglow2024) is reflected in the public GET response."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: GET /api/concerns returns HTTP 200 with 14 concerns. PUT /api/admin/concerns/anti-aging (X-Admin-Token: celestaglow2024) with modified description returns HTTP 200 success=true. GET /api/concerns again shows the change reflected immediately (description contains '[TEST EDIT]'). Restored original value successfully. Same test for categories: GET /api/categories returns HTTP 200 with 48 categories. PUT /api/admin/categories/face-wash with modified tagline returns HTTP 200 success=true. GET /api/categories shows change reflected (tagline contains '[TEST]'). Restored original value. GET /api/niches returns HTTP 200 with 1 active niche (skin-care). Admin taxonomy edits are immediately reflected on public endpoints."
+
+frontend:
+  - task: "Three targeting badges on PDP and 24-variation cards"
+    implemented: true
+    working: true
+    file: "pages/ProductDetailPage.js, pages/CustomizeProductPage.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "PDP already rendered 3 pills; CustomizeProductPage now shows skin type + concern + gender/age badges."
+
+  - task: "Rebuilt AI Skin Tracker homepage section (data-testid home-tracker-promo)"
+    implemented: true
+    working: "NA"
+    file: "pages/Homepage.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Replaced TrackerPromo with rich layout (copy+features+CTA, skin photo strip, Skin Analysis card with before/after + skin score ring + metrics + progress chart, Detailed Analysis + Recommended products). Verified via screenshot. CTA links to /tracker."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 4
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
 agent_communication:
     -agent: "main"
-    -message: "Implemented per-variation badges everywhere, made the Formula-Technology gallery + certificate + before/after work even with NO product photo (placeholder bottle), and wired before/after generation into one-click, generate-images and the 24-variation flow. Admin token header is 'X-Admin-Token: celestaglow2024'. Please validate: (1) POST /api/admin/products/{slug}/generate-images with body {gallery:true,certificate:true,before_after:true} returns images+test_report_image+before_after; (2) it works for a product that has NO images; (3) GET /api/products?generated_from={base} returns target_skin_type/target_gender/target_age_group/concern_label; (4) GET /api/before-after/{variation_slug} returns a row; (5) POST /api/admin/products/{slug}/generate-variations returns total 24. Use existing products: advanced-face-serum (base) and its variations."
+    -message: "Two backend items to verify after this iteration. (1) AUTH/OTP: POST /api/auth/send-otp {email} should return success and delivered:true (Gmail SMTP configured via .env). Then verify-otp: fetch the generated OTP from db.customer_otps (or backend logs) and POST /api/auth/verify-otp {email, otp} — expect success:true + a token. Confirm /api/customer/send-otp returns 404 (that was the old wrong path). (2) TAXONOMY REFLECTION: admin edits must reflect on public endpoints — PUT /api/admin/concerns/{slug} (header X-Admin-Token: celestaglow2024) then GET /api/concerns should show the change; same for /api/admin/categories/{slug} -> GET /api/categories. Admin token/password is 'celestaglow2024'. Do NOT delete real concerns/categories — edit a benign field (e.g., description or sort_order) and restore it if needed."
     -agent: "testing"
-    -message: "✅ ALL BACKEND TESTS PASSED (5/5). Tested all media-generation endpoints: (1) generate-images returns 5 images + certificate + before/after, all URLs fetchable; (2) one-click product WITHOUT images successfully generates 4 gallery images + certificate + before/after using placeholder bottle; (3) products list returns all badge fields (target_skin_type, target_gender, target_age_group, concern_label) for 24 variations; (4) before-after endpoint returns fetchable before/after images; (5) generate-variations creates 24 variations successfully. All flows work correctly with and without hero photos. No issues found. Ready for main agent to summarize and finish."
+    -message: "✅ BOTH BACKEND TESTS PASSED (2/2). (1) Customer OTP Login: Complete end-to-end flow working - send-otp returns delivered=true (Gmail SMTP), OTP readable from DB, verify-otp returns valid token + user object, old wrong path /api/customer/send-otp correctly returns 404. (2) Taxonomy Reflection: Admin edits to concerns/categories via PUT /api/admin/* are immediately reflected on public GET /api/concerns and GET /api/categories endpoints. GET /api/niches also working (returns 1 active niche). All changes tested and restored. No issues found."

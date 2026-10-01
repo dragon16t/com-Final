@@ -1,512 +1,435 @@
-"""Backend API tests for Celesta Glow media generation endpoints.
+"""Backend API tests for Celesta Glow - OTP Auth & Taxonomy Reflection
 
 Tests the following flows:
-1. POST /api/admin/products/{slug}/generate-images - gallery, certificate, before_after generation
-2. POST /api/admin/ai/one-click-product - create product WITHOUT images (placeholder bottle)
-3. GET /api/products?generated_from={slug} - verify badge fields
-4. GET /api/before-after/{slug} - verify before/after images
-5. POST /api/admin/products/{slug}/generate-variations - 24-variation generation
+1. Customer email OTP login (send-otp / verify-otp) - regression fix
+2. Admin taxonomy edits reflect on public endpoints (concerns/categories/niches)
 """
 import requests
 import json
 import sys
+import os
+from pymongo import MongoClient
 
-# Use internal localhost URL for testing
-BASE_URL = "http://localhost:8001/api"
+# Use external URL from frontend/.env
+BASE_URL = "https://com7-staging.preview.emergentagent.com/api"
 ADMIN_TOKEN = "celestaglow2024"
 HEADERS = {"X-Admin-Token": ADMIN_TOKEN}
+
+# MongoDB connection for reading OTP
+MONGO_URL = "mongodb://localhost:27017"
+DB_NAME = "test_database"
 
 def log(msg):
     print(f"[TEST] {msg}")
 
-def test_generate_images():
-    """Test 1: POST /api/admin/products/advanced-face-serum/generate-images"""
+def get_otp_from_db(email):
+    """Read OTP from MongoDB customer_otps collection"""
+    try:
+        client = MongoClient(MONGO_URL)
+        db = client[DB_NAME]
+        record = db.customer_otps.find_one({"email": email})
+        client.close()
+        if record:
+            return record.get("otp")
+        return None
+    except Exception as e:
+        log(f"Error reading OTP from DB: {e}")
+        return None
+
+def test_customer_otp_login():
+    """Test 1: Customer email OTP login flow (regression fix)"""
     log("=" * 80)
-    log("TEST 1: Generate images/certificate/before-after for advanced-face-serum")
+    log("TEST 1: Customer Email OTP Login (Regression Fix)")
     log("=" * 80)
     
-    url = f"{BASE_URL}/admin/products/advanced-face-serum/generate-images"
-    payload = {
-        "gallery": True,
-        "certificate": True,
-        "before_after": True
-    }
+    email = "qa_tester@example.com"
+    errors = []
+    
+    # Step 1: Send OTP
+    log("\nStep 1: POST /api/auth/send-otp")
+    send_url = f"{BASE_URL}/auth/send-otp"
+    payload = {"email": email}
     
     try:
-        resp = requests.post(url, json=payload, headers=HEADERS, timeout=60)
+        resp = requests.post(send_url, json=payload, timeout=30)
         log(f"Status: {resp.status_code}")
+        log(f"Response: {resp.text[:500]}")
         
         if resp.status_code != 200:
-            log(f"❌ FAILED: Expected 200, got {resp.status_code}")
-            log(f"Response: {resp.text[:500]}")
-            return False
-        
-        data = resp.json()
-        log(f"Response keys: {list(data.keys())}")
-        
-        # Verify response structure
-        errors = []
-        
-        # Check images list
-        if "images" not in data:
-            errors.append("Missing 'images' field")
-        elif not isinstance(data["images"], list):
-            errors.append("'images' is not a list")
-        elif len(data["images"]) < 4:
-            errors.append(f"'images' has {len(data['images'])} items, expected >= 4")
+            errors.append(f"send-otp: Expected 200, got {resp.status_code}")
         else:
-            log(f"✓ images: {len(data['images'])} items")
-            # Verify first few image URLs
-            for i, img in enumerate(data["images"][:3]):
-                log(f"  - Image {i}: {img}")
-        
-        # Check test_report_image (certificate)
-        if "test_report_image" not in data:
-            errors.append("Missing 'test_report_image' field")
-        elif not data["test_report_image"]:
-            errors.append("'test_report_image' is empty")
-        else:
-            log(f"✓ test_report_image: {data['test_report_image']}")
-        
-        # Check before_after list
-        if "before_after" not in data:
-            errors.append("Missing 'before_after' field")
-        elif not isinstance(data["before_after"], list):
-            errors.append("'before_after' is not a list")
-        elif len(data["before_after"]) != 2:
-            errors.append(f"'before_after' has {len(data['before_after'])} items, expected 2")
-        else:
-            log(f"✓ before_after: {len(data['before_after'])} items")
-            # Verify types
-            types = [item.get("type") for item in data["before_after"]]
-            if "before" not in types or "after" not in types:
-                errors.append(f"before_after types incorrect: {types}")
+            data = resp.json()
+            if not data.get("success"):
+                errors.append(f"send-otp: success=false")
             else:
-                log(f"  - Types: {types}")
-        
-        # Test image URL accessibility
-        if "images" in data and data["images"]:
-            test_url = data["images"][0]
-            if test_url.startswith("/api/"):
-                test_url = f"http://localhost:8001{test_url}"
-            try:
-                img_resp = requests.get(test_url, timeout=10)
-                if img_resp.status_code == 200:
-                    log(f"✓ Image URL is fetchable: {test_url}")
-                else:
-                    errors.append(f"Image URL returned {img_resp.status_code}: {test_url}")
-            except Exception as e:
-                errors.append(f"Failed to fetch image URL: {e}")
-        
-        # Test certificate URL
-        if "test_report_image" in data and data["test_report_image"]:
-            cert_url = data["test_report_image"]
-            if cert_url.startswith("/api/"):
-                cert_url = f"http://localhost:8001{cert_url}"
-            try:
-                cert_resp = requests.get(cert_url, timeout=10)
-                if cert_resp.status_code == 200:
-                    log(f"✓ Certificate URL is fetchable: {cert_url}")
-                else:
-                    errors.append(f"Certificate URL returned {cert_resp.status_code}: {cert_url}")
-            except Exception as e:
-                errors.append(f"Failed to fetch certificate URL: {e}")
-        
-        # Test before/after URLs
-        if "before_after" in data and data["before_after"]:
-            for item in data["before_after"]:
-                img_url = item.get("image")
-                if img_url:
-                    if img_url.startswith("/api/"):
-                        img_url = f"http://localhost:8001{img_url}"
-                    try:
-                        ba_resp = requests.get(img_url, timeout=10)
-                        if ba_resp.status_code == 200:
-                            log(f"✓ Before/After {item.get('type')} URL is fetchable")
-                        else:
-                            errors.append(f"Before/After URL returned {ba_resp.status_code}: {img_url}")
-                    except Exception as e:
-                        errors.append(f"Failed to fetch before/after URL: {e}")
-        
-        if errors:
-            log("❌ FAILED with errors:")
-            for err in errors:
-                log(f"  - {err}")
-            return False
-        
-        log("✅ PASSED: All checks successful")
-        return True
-        
-    except Exception as e:
-        log(f"❌ FAILED with exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
-def test_one_click_no_image():
-    """Test 2: Create product WITHOUT images via one-click-product"""
-    log("\n" + "=" * 80)
-    log("TEST 2: One-click product WITHOUT images (placeholder bottle)")
-    log("=" * 80)
-    
-    url = f"{BASE_URL}/admin/ai/one-click-product"
-    payload = {
-        "name": "Zephyr Test Serum",
-        "brand": "Celesta Glow",
-        "key_ingredients": "Niacinamide, Zinc",
-        "generate_image": False
-    }
-    
-    try:
-        resp = requests.post(url, json=payload, headers=HEADERS, timeout=90)
-        log(f"Status: {resp.status_code}")
-        
-        if resp.status_code != 200:
-            log(f"❌ FAILED: Expected 200, got {resp.status_code}")
-            log(f"Response: {resp.text[:500]}")
-            return False, None
-        
-        data = resp.json()
-        log(f"Response keys: {list(data.keys())}")
-        
-        if not data.get("success"):
-            log(f"❌ FAILED: success=false")
-            return False, None
-        
-        slug = data.get("slug")
-        if not slug:
-            log(f"❌ FAILED: No slug returned")
-            return False, None
-        
-        log(f"✓ Product created with slug: {slug}")
-        
-        # Now GET the product to verify media generation
-        get_url = f"{BASE_URL}/products/{slug}"
-        get_resp = requests.get(get_url, timeout=10)
-        
-        if get_resp.status_code != 200:
-            log(f"❌ FAILED: Could not fetch product, status {get_resp.status_code}")
-            return False, slug
-        
-        product = get_resp.json()
-        errors = []
-        
-        # Check images (should have >= 4 from gallery)
-        if "images" not in product:
-            errors.append("Missing 'images' field")
-        elif not isinstance(product["images"], list):
-            errors.append("'images' is not a list")
-        elif len(product["images"]) < 4:
-            errors.append(f"'images' has {len(product['images'])} items, expected >= 4 (gallery)")
-        else:
-            log(f"✓ images: {len(product['images'])} items (auto-composed gallery)")
-        
-        # Check test_report_image
-        if "test_report_image" not in product or not product["test_report_image"]:
-            errors.append("Missing or empty 'test_report_image'")
-        else:
-            log(f"✓ test_report_image: {product['test_report_image']}")
-        
-        # Check before_after
-        if "before_after" not in product:
-            errors.append("Missing 'before_after' field")
-        elif not isinstance(product["before_after"], list):
-            errors.append("'before_after' is not a list")
-        elif len(product["before_after"]) != 2:
-            errors.append(f"'before_after' has {len(product['before_after'])} items, expected 2")
-        else:
-            log(f"✓ before_after: {len(product['before_after'])} items")
-        
-        if errors:
-            log("❌ FAILED with errors:")
-            for err in errors:
-                log(f"  - {err}")
-            return False, slug
-        
-        log("✅ PASSED: Product created with media generation (no hero photo)")
-        return True, slug
-        
-    except Exception as e:
-        log(f"❌ FAILED with exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return False, None
-
-
-def test_products_list_badge_fields():
-    """Test 3: GET /api/products?generated_from=advanced-face-serum - verify badge fields"""
-    log("\n" + "=" * 80)
-    log("TEST 3: List variations with badge fields")
-    log("=" * 80)
-    
-    url = f"{BASE_URL}/products"
-    params = {
-        "generated_from": "advanced-face-serum",
-        "limit": 48
-    }
-    
-    try:
-        resp = requests.get(url, params=params, timeout=10)
-        log(f"Status: {resp.status_code}")
-        
-        if resp.status_code != 200:
-            log(f"❌ FAILED: Expected 200, got {resp.status_code}")
-            log(f"Response: {resp.text[:500]}")
-            return False
-        
-        data = resp.json()
-        
-        # Handle both array and paginated response
-        if isinstance(data, dict) and "items" in data:
-            products = data["items"]
-            log(f"Found {len(products)} variations (paginated response)")
-        elif isinstance(data, list):
-            products = data
-            log(f"Found {len(products)} variations (array response)")
-        else:
-            log(f"❌ FAILED: Unexpected response format")
-            return False
-        
-        if not products:
-            log(f"❌ FAILED: No variations found")
-            return False
-        
-        errors = []
-        checked = 0
-        
-        for i, product in enumerate(products[:5]):  # Check first 5
-            checked += 1
-            slug = product.get("slug", f"item-{i}")
-            log(f"\nChecking product: {slug}")
+                log(f"✓ success: {data.get('success')}")
             
-            # Check required badge fields
-            required_fields = ["target_skin_type", "target_gender", "target_age_group", "concern_label"]
-            for field in required_fields:
-                if field not in product:
-                    errors.append(f"{slug}: Missing '{field}' field")
-                elif product[field] is None:
-                    errors.append(f"{slug}: '{field}' is null")
-                elif not product[field]:
-                    errors.append(f"{slug}: '{field}' is empty")
-                else:
-                    log(f"  ✓ {field}: {product[field]}")
-        
-        log(f"\nChecked {checked} products")
-        
-        if errors:
-            log("❌ FAILED with errors:")
-            for err in errors:
-                log(f"  - {err}")
-            return False
-        
-        log("✅ PASSED: All badge fields present and non-null")
-        return True
-        
+            # Check delivered flag
+            delivered = data.get("delivered")
+            log(f"✓ delivered: {delivered}")
+            if delivered != True:
+                errors.append(f"send-otp: delivered={delivered}, expected True (Gmail SMTP should be configured)")
+    
     except Exception as e:
-        log(f"❌ FAILED with exception: {e}")
+        errors.append(f"send-otp exception: {e}")
         import traceback
         traceback.print_exc()
+    
+    # Step 2: Read OTP from MongoDB
+    log("\nStep 2: Read OTP from MongoDB customer_otps collection")
+    otp = get_otp_from_db(email)
+    if not otp:
+        errors.append("Could not read OTP from MongoDB")
+        log(f"❌ Could not read OTP from DB")
+    else:
+        log(f"✓ OTP from DB: {otp}")
+    
+    # Step 3: Verify OTP
+    if otp:
+        log("\nStep 3: POST /api/auth/verify-otp")
+        verify_url = f"{BASE_URL}/auth/verify-otp"
+        verify_payload = {
+            "email": email,
+            "otp": otp
+        }
+        
+        try:
+            resp = requests.post(verify_url, json=verify_payload, timeout=30)
+            log(f"Status: {resp.status_code}")
+            log(f"Response: {resp.text[:500]}")
+            
+            if resp.status_code != 200:
+                errors.append(f"verify-otp: Expected 200, got {resp.status_code}")
+            else:
+                data = resp.json()
+                if not data.get("success"):
+                    errors.append(f"verify-otp: success=false")
+                else:
+                    log(f"✓ success: {data.get('success')}")
+                
+                # Check token
+                token = data.get("token")
+                if not token:
+                    errors.append("verify-otp: No token returned")
+                else:
+                    log(f"✓ token: {token[:20]}...")
+                
+                # Check user object
+                user = data.get("user")
+                if not user:
+                    errors.append("verify-otp: No user object returned")
+                else:
+                    log(f"✓ user.email: {user.get('email')}")
+                    if user.get("email") != email:
+                        errors.append(f"verify-otp: user.email mismatch, expected {email}, got {user.get('email')}")
+        
+        except Exception as e:
+            errors.append(f"verify-otp exception: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Step 4: Confirm old wrong path returns 404
+    log("\nStep 4: Confirm OLD wrong path POST /api/customer/send-otp returns 404")
+    old_url = f"{BASE_URL}/customer/send-otp"
+    try:
+        resp = requests.post(old_url, json={"email": email}, timeout=10)
+        log(f"Status: {resp.status_code}")
+        
+        if resp.status_code != 404:
+            errors.append(f"old-path: Expected 404, got {resp.status_code} (old path should not exist)")
+        else:
+            log(f"✓ Old path correctly returns 404")
+    
+    except Exception as e:
+        errors.append(f"old-path exception: {e}")
+    
+    # Summary
+    if errors:
+        log("\n❌ TEST 1 FAILED with errors:")
+        for err in errors:
+            log(f"  - {err}")
         return False
+    
+    log("\n✅ TEST 1 PASSED: Customer OTP login working correctly")
+    return True
 
 
-def test_before_after_endpoint():
-    """Test 4: GET /api/before-after/{slug}"""
+def test_taxonomy_reflection():
+    """Test 2: Admin taxonomy edits reflect on public endpoints"""
     log("\n" + "=" * 80)
-    log("TEST 4: Before/After endpoint")
+    log("TEST 2: Admin Taxonomy Edits Reflect on Public Endpoints")
     log("=" * 80)
     
-    # Test with a variation slug
-    slug = "advanced-face-serum-men-oily-18-24"
-    url = f"{BASE_URL}/before-after/{slug}"
+    errors = []
+    
+    # Test Concerns
+    log("\n--- Testing Concerns ---")
+    
+    # Step 1: GET /api/concerns (public)
+    log("\nStep 1: GET /api/concerns (public)")
+    concerns_url = f"{BASE_URL}/concerns"
     
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(concerns_url, timeout=10)
         log(f"Status: {resp.status_code}")
         
         if resp.status_code != 200:
-            log(f"❌ FAILED: Expected 200, got {resp.status_code}")
-            log(f"Response: {resp.text[:500]}")
+            errors.append(f"GET concerns: Expected 200, got {resp.status_code}")
             return False
         
-        data = resp.json()
-        
-        # Expect a list or dict with rows
-        if isinstance(data, dict):
-            log(f"Response keys: {list(data.keys())}")
-            rows = data.get("rows") or data.get("items") or []
-        elif isinstance(data, list):
-            log(f"Response is a list with {len(data)} items")
-            rows = data
-        else:
-            log(f"❌ FAILED: Unexpected response format")
+        concerns = resp.json()
+        if not concerns or not isinstance(concerns, list):
+            errors.append("GET concerns: No concerns returned or not a list")
             return False
         
-        if not rows:
-            log(f"❌ FAILED: No before/after rows found")
-            return False
+        log(f"✓ Found {len(concerns)} concerns")
         
-        log(f"Found {len(rows)} before/after row(s)")
+        # Pick first concern
+        concern = concerns[0]
+        concern_slug = concern.get("slug")
+        original_description = concern.get("description", "")
+        original_sort_order = concern.get("sort_order", 99)
         
-        errors = []
-        row = rows[0]
-        
-        # Check before_image
-        if "before_image" not in row or not row["before_image"]:
-            errors.append("Missing or empty 'before_image'")
-        else:
-            log(f"✓ before_image: {row['before_image']}")
-            # Test URL
-            img_url = row["before_image"]
-            if img_url.startswith("/api/"):
-                img_url = f"http://localhost:8001{img_url}"
-            try:
-                img_resp = requests.get(img_url, timeout=10)
-                if img_resp.status_code == 200:
-                    log(f"  ✓ before_image URL is fetchable")
-                else:
-                    errors.append(f"before_image URL returned {img_resp.status_code}")
-            except Exception as e:
-                errors.append(f"Failed to fetch before_image: {e}")
-        
-        # Check after_image
-        if "after_image" not in row or not row["after_image"]:
-            errors.append("Missing or empty 'after_image'")
-        else:
-            log(f"✓ after_image: {row['after_image']}")
-            # Test URL
-            img_url = row["after_image"]
-            if img_url.startswith("/api/"):
-                img_url = f"http://localhost:8001{img_url}"
-            try:
-                img_resp = requests.get(img_url, timeout=10)
-                if img_resp.status_code == 200:
-                    log(f"  ✓ after_image URL is fetchable")
-                else:
-                    errors.append(f"after_image URL returned {img_resp.status_code}")
-            except Exception as e:
-                errors.append(f"Failed to fetch after_image: {e}")
-        
-        if errors:
-            log("❌ FAILED with errors:")
-            for err in errors:
-                log(f"  - {err}")
-            return False
-        
-        log("✅ PASSED: Before/After endpoint working correctly")
-        return True
+        log(f"✓ Testing with concern: {concern_slug}")
+        log(f"  Original description: {original_description[:50]}...")
+        log(f"  Original sort_order: {original_sort_order}")
         
     except Exception as e:
-        log(f"❌ FAILED with exception: {e}")
-        import traceback
-        traceback.print_exc()
+        errors.append(f"GET concerns exception: {e}")
         return False
-
-
-def test_generate_variations():
-    """Test 5: POST /api/admin/products/{slug}/generate-variations"""
-    log("\n" + "=" * 80)
-    log("TEST 5: Generate 24 variations")
-    log("=" * 80)
     
-    url = f"{BASE_URL}/admin/products/advanced-face-serum/generate-variations"
-    payload = {
-        "concern": "brightening-glow",
-        "concern_label": "Brightening & Glow"
+    # Step 2: PUT /api/admin/concerns/{slug} - change description
+    log(f"\nStep 2: PUT /api/admin/concerns/{concern_slug} (admin)")
+    admin_concern_url = f"{BASE_URL}/admin/concerns/{concern_slug}"
+    
+    # Create update payload with modified description
+    new_description = f"{original_description} [TEST EDIT]"
+    update_payload = {
+        "slug": concern_slug,
+        "name": concern.get("name"),
+        "tagline": concern.get("tagline", ""),
+        "icon": concern.get("icon", ""),
+        "image": concern.get("image", ""),
+        "accent_from": concern.get("accent_from", "#dcfce7"),
+        "accent_to": concern.get("accent_to", "#bbf7d0"),
+        "accent_text": concern.get("accent_text", "#14532d"),
+        "description": new_description,
+        "sort_order": concern.get("sort_order", 99),
+        "is_active": concern.get("is_active", True),
+        "niche": concern.get("niche", "skincare")
     }
     
     try:
-        resp = requests.post(url, json=payload, headers=HEADERS, timeout=120)
+        resp = requests.put(admin_concern_url, json=update_payload, headers=HEADERS, timeout=10)
+        log(f"Status: {resp.status_code}")
+        log(f"Response: {resp.text[:200]}")
+        
+        if resp.status_code != 200:
+            errors.append(f"PUT concern: Expected 200, got {resp.status_code}")
+        else:
+            data = resp.json()
+            if not data.get("success"):
+                errors.append(f"PUT concern: success=false")
+            else:
+                log(f"✓ Concern updated successfully")
+    
+    except Exception as e:
+        errors.append(f"PUT concern exception: {e}")
+    
+    # Step 3: GET /api/concerns again to verify change
+    log("\nStep 3: GET /api/concerns again to verify change")
+    
+    try:
+        resp = requests.get(concerns_url, timeout=10)
         log(f"Status: {resp.status_code}")
         
         if resp.status_code != 200:
-            log(f"❌ FAILED: Expected 200, got {resp.status_code}")
-            log(f"Response: {resp.text[:500]}")
-            return False
-        
-        data = resp.json()
-        log(f"Response keys: {list(data.keys())}")
-        
-        errors = []
-        
-        # Check success
-        if not data.get("success"):
-            errors.append("success=false")
-        
-        # Check total
-        if "total" not in data:
-            errors.append("Missing 'total' field")
-        elif data["total"] != 24:
-            errors.append(f"Expected total=24, got {data['total']}")
+            errors.append(f"GET concerns (verify): Expected 200, got {resp.status_code}")
         else:
-            log(f"✓ total: {data['total']}")
-        
-        # Check slugs list
-        if "slugs" in data and isinstance(data["slugs"], list):
-            log(f"✓ slugs: {len(data['slugs'])} items")
-            if data["slugs"]:
-                log(f"  Sample slugs: {data['slugs'][:3]}")
-        
-        if errors:
-            log("❌ FAILED with errors:")
-            for err in errors:
-                log(f"  - {err}")
-            return False
-        
-        log("✅ PASSED: 24 variations generated successfully")
-        return True
-        
-    except Exception as e:
-        log(f"❌ FAILED with exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-
-def cleanup_test_product(slug):
-    """Clean up test product created during testing"""
-    if not slug:
-        return
+            concerns = resp.json()
+            updated_concern = next((c for c in concerns if c.get("slug") == concern_slug), None)
+            
+            if not updated_concern:
+                errors.append(f"GET concerns (verify): Could not find concern {concern_slug}")
+            else:
+                updated_description = updated_concern.get("description", "")
+                log(f"  Updated description: {updated_description[:80]}...")
+                
+                if "[TEST EDIT]" not in updated_description:
+                    errors.append(f"GET concerns (verify): Change not reflected. Expected '[TEST EDIT]' in description")
+                else:
+                    log(f"✓ Change reflected in public endpoint")
     
-    log(f"\nCleaning up test product: {slug}")
-    url = f"{BASE_URL}/admin/products/{slug}"
-    try:
-        resp = requests.delete(url, headers=HEADERS, timeout=10)
-        if resp.status_code == 200:
-            log(f"✓ Cleaned up {slug}")
-        else:
-            log(f"⚠ Could not clean up {slug}: {resp.status_code}")
     except Exception as e:
-        log(f"⚠ Cleanup failed: {e}")
+        errors.append(f"GET concerns (verify) exception: {e}")
+    
+    # Step 4: Restore original value
+    log(f"\nStep 4: Restore original concern description")
+    restore_payload = {**update_payload, "description": original_description}
+    
+    try:
+        resp = requests.put(admin_concern_url, json=restore_payload, headers=HEADERS, timeout=10)
+        log(f"Status: {resp.status_code}")
+        
+        if resp.status_code == 200:
+            log(f"✓ Concern restored to original state")
+        else:
+            log(f"⚠ Could not restore concern: {resp.status_code}")
+    
+    except Exception as e:
+        log(f"⚠ Restore concern exception: {e}")
+    
+    # Test Categories
+    log("\n--- Testing Categories ---")
+    
+    # Step 5: GET /api/categories (public)
+    log("\nStep 5: GET /api/categories (public)")
+    categories_url = f"{BASE_URL}/categories"
+    
+    try:
+        resp = requests.get(categories_url, timeout=10)
+        log(f"Status: {resp.status_code}")
+        
+        if resp.status_code != 200:
+            errors.append(f"GET categories: Expected 200, got {resp.status_code}")
+        else:
+            categories = resp.json()
+            if not categories or not isinstance(categories, list):
+                errors.append("GET categories: No categories returned or not a list")
+            else:
+                log(f"✓ Found {len(categories)} categories")
+                
+                # Pick first category
+                category = categories[0]
+                category_slug = category.get("slug")
+                original_tagline = category.get("tagline", "")
+                
+                log(f"✓ Testing with category: {category_slug}")
+                log(f"  Original tagline: {original_tagline}")
+    
+    except Exception as e:
+        errors.append(f"GET categories exception: {e}")
+        category_slug = None
+    
+    # Step 6: PUT /api/admin/categories/{slug} - change tagline
+    if category_slug:
+        log(f"\nStep 6: PUT /api/admin/categories/{category_slug} (admin)")
+        admin_category_url = f"{BASE_URL}/admin/categories/{category_slug}"
+        
+        # Partial update - only send fields we want to change
+        new_tagline = f"{original_tagline} [TEST]"
+        category_update = {
+            "tagline": new_tagline
+        }
+        
+        try:
+            resp = requests.put(admin_category_url, json=category_update, headers=HEADERS, timeout=10)
+            log(f"Status: {resp.status_code}")
+            log(f"Response: {resp.text[:200]}")
+            
+            if resp.status_code != 200:
+                errors.append(f"PUT category: Expected 200, got {resp.status_code}")
+            else:
+                data = resp.json()
+                if not data.get("success"):
+                    errors.append(f"PUT category: success=false")
+                else:
+                    log(f"✓ Category updated successfully")
+        
+        except Exception as e:
+            errors.append(f"PUT category exception: {e}")
+        
+        # Step 7: GET /api/categories again to verify change
+        log("\nStep 7: GET /api/categories again to verify change")
+        
+        try:
+            resp = requests.get(categories_url, timeout=10)
+            log(f"Status: {resp.status_code}")
+            
+            if resp.status_code != 200:
+                errors.append(f"GET categories (verify): Expected 200, got {resp.status_code}")
+            else:
+                categories = resp.json()
+                updated_category = next((c for c in categories if c.get("slug") == category_slug), None)
+                
+                if not updated_category:
+                    errors.append(f"GET categories (verify): Could not find category {category_slug}")
+                else:
+                    updated_tagline = updated_category.get("tagline", "")
+                    log(f"  Updated tagline: {updated_tagline}")
+                    
+                    if "[TEST]" not in updated_tagline:
+                        errors.append(f"GET categories (verify): Change not reflected. Expected '[TEST]' in tagline")
+                    else:
+                        log(f"✓ Change reflected in public endpoint")
+        
+        except Exception as e:
+            errors.append(f"GET categories (verify) exception: {e}")
+        
+        # Step 8: Restore original value
+        log(f"\nStep 8: Restore original category tagline")
+        restore_category = {"tagline": original_tagline}
+        
+        try:
+            resp = requests.put(admin_category_url, json=restore_category, headers=HEADERS, timeout=10)
+            log(f"Status: {resp.status_code}")
+            
+            if resp.status_code == 200:
+                log(f"✓ Category restored to original state")
+            else:
+                log(f"⚠ Could not restore category: {resp.status_code}")
+        
+        except Exception as e:
+            log(f"⚠ Restore category exception: {e}")
+    
+    # Test Niches
+    log("\n--- Testing Niches ---")
+    
+    # Step 9: GET /api/niches (public)
+    log("\nStep 9: GET /api/niches (public)")
+    niches_url = f"{BASE_URL}/niches"
+    
+    try:
+        resp = requests.get(niches_url, timeout=10)
+        log(f"Status: {resp.status_code}")
+        
+        if resp.status_code != 200:
+            errors.append(f"GET niches: Expected 200, got {resp.status_code}")
+        else:
+            niches = resp.json()
+            if not niches or not isinstance(niches, list):
+                errors.append("GET niches: No niches returned or not a list")
+            else:
+                log(f"✓ Found {len(niches)} active niches")
+                for niche in niches:
+                    log(f"  - {niche.get('slug')}: {niche.get('name')}")
+    
+    except Exception as e:
+        errors.append(f"GET niches exception: {e}")
+    
+    # Summary
+    if errors:
+        log("\n❌ TEST 2 FAILED with errors:")
+        for err in errors:
+            log(f"  - {err}")
+        return False
+    
+    log("\n✅ TEST 2 PASSED: Admin taxonomy edits reflect on public endpoints")
+    return True
 
 
 def main():
-    log("Starting Celesta Glow Backend Media Generation Tests")
+    log("Starting Celesta Glow Backend Tests - OTP Auth & Taxonomy Reflection")
     log(f"Base URL: {BASE_URL}")
     log(f"Admin Token: {ADMIN_TOKEN[:10]}...")
     
     results = {}
-    test_slug = None
     
-    # Test 1: Generate images for existing product
-    results["test_1_generate_images"] = test_generate_images()
+    # Test 1: Customer OTP Login
+    results["test_1_customer_otp_login"] = test_customer_otp_login()
     
-    # Test 2: One-click product without images
-    passed, test_slug = test_one_click_no_image()
-    results["test_2_one_click_no_image"] = passed
-    
-    # Test 3: List variations with badge fields
-    results["test_3_badge_fields"] = test_products_list_badge_fields()
-    
-    # Test 4: Before/After endpoint
-    results["test_4_before_after"] = test_before_after_endpoint()
-    
-    # Test 5: Generate variations
-    results["test_5_generate_variations"] = test_generate_variations()
-    
-    # Cleanup
-    if test_slug:
-        cleanup_test_product(test_slug)
+    # Test 2: Taxonomy Reflection
+    results["test_2_taxonomy_reflection"] = test_taxonomy_reflection()
     
     # Summary
     log("\n" + "=" * 80)

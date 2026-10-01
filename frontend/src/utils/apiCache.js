@@ -66,7 +66,13 @@ const buildKey = (url, params) => {
 };
 
 export async function cachedGet(url, options = {}) {
-  const { ttl = DEFAULT_TTL_MS, params, headers, force = false, retry = 1, timeout = 12_000, signal } = options;
+  let { ttl = DEFAULT_TTL_MS, params, headers, force = false, retry = 1, timeout = 12_000, signal } = options;
+  // FRESHNESS: admin-editable taxonomy & settings must reflect on the storefront
+  // almost immediately after an admin edit. Cap their client cache at 30s regardless
+  // of the caller's requested TTL (otherwise a 5-min localStorage cache hid edits).
+  if (/\/api\/(concerns|categories|niches|subcategories|site-settings)(\b|\?|\/|$)/.test(url)) {
+    ttl = Math.min(ttl, 30_000);
+  }
   const key = buildKey(url, params);
 
   if (!force) {

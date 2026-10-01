@@ -5,7 +5,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, ImageIcon, Sparkles, Sunrise, Moon, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ImageIcon, Sparkles, Sunrise, Moon, RefreshCw, Leaf, Ban, Star, ShoppingBag } from 'lucide-react';
 import { getAdminToken } from '../../utils/adminAuth';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -72,8 +72,12 @@ export default function AdminRoutines() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-900 text-sm truncate">{r.skin_type} · {r.age}{typeof r.skin_score === 'number' ? ` · Score ${r.skin_score}/100` : ''}</p>
-                      <p className="text-xs text-gray-500 truncate">Concerns: {r.concerns?.join(', ') || '—'}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {r.email ? <span className="text-emerald-700 font-medium">{r.email} · </span> : null}
+                        Concerns: {r.concerns?.join(', ') || '—'}
+                      </p>
                     </div>
+                    {r.source === 'tracker_scan' && <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 mr-2">AI Scan</span>}
                     <span className="text-[11px] text-gray-400">{new Date(r.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                   </button>
 
@@ -133,6 +137,44 @@ export default function AdminRoutines() {
                           </ul>
                         </div>
                       )}
+                      {(r.diet?.length || r.control?.length) && (
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {r.diet?.length ? (
+                            <div>
+                              <h4 className="text-xs font-bold text-emerald-700 flex items-center gap-1.5 mb-2"><Leaf size={12} /> Diet</h4>
+                              <ul className="list-disc list-inside text-xs text-gray-600 space-y-0.5">
+                                {r.diet.map((d, i) => <li key={i}>{d}</li>)}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {r.control?.length ? (
+                            <div>
+                              <h4 className="text-xs font-bold text-rose-700 flex items-center gap-1.5 mb-2"><Ban size={12} /> What to control / avoid</h4>
+                              <ul className="list-disc list-inside text-xs text-gray-600 space-y-0.5">
+                                {r.control.map((d, i) => <li key={i}>{d}</li>)}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                      {r.weekly?.length ? (
+                        <div className="mt-4">
+                          <h4 className="text-xs font-bold text-amber-700 flex items-center gap-1.5 mb-2"><Star size={12} /> Weekly treatments</h4>
+                          <ul className="list-disc list-inside text-xs text-gray-600 space-y-0.5">
+                            {r.weekly.map((d, i) => <li key={i}>{d}</li>)}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {r.recommended_products?.length ? (
+                        <div className="mt-4">
+                          <h4 className="text-xs font-bold text-gray-600 flex items-center gap-1.5 mb-2"><ShoppingBag size={12} /> Recommended products</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {r.recommended_products.map((p, i) => (
+                              <span key={i} className="text-[11px] bg-white border border-gray-200 rounded-lg px-2 py-1 text-gray-700">{p.name}{p.price ? ` · ₹${p.price}` : ''}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </div>

@@ -355,7 +355,7 @@ function App() {
                 <PublicLayout><Suspense fallback={<PageLoader />}><RoutinePage /></Suspense></PublicLayout>
               } />
               <Route path="/account" element={
-                <PublicLayout><Suspense fallback={<PageLoader />}><AccountPage /></Suspense></PublicLayout>
+                <PublicLayout><Suspense fallback={<PageLoader />}><TrackerPage /></Suspense></PublicLayout>
               } />
               <Route path="/tracker" element={
                 <PublicLayout><Suspense fallback={<PageLoader />}><TrackerPage /></Suspense></PublicLayout>

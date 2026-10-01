@@ -651,17 +651,19 @@ function Homepage() {
 const TRACKER_SKIN = {
   pores: 'https://images.unsplash.com/photo-1541752857837-f8a0154fd092?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
   pores2: 'https://images.unsplash.com/photo-1710580889701-9fa8f2cd5927?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
-  acne: 'https://images.unsplash.com/photo-1604604891787-6818365d208a?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
-  acne2: 'https://images.pexels.com/photos/8589763/pexels-photo-8589763.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=400&w=400',
+  acne: 'https://images.pexels.com/photos/5588000/pexels-photo-5588000.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=500&w=400',
+  acne2: 'https://images.pexels.com/photos/5588000/pexels-photo-5588000.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=400&w=400',
   darkspot: 'https://images.unsplash.com/photo-1723540634462-528708cc17aa?crop=entropy&cs=srgb&fm=jpg&q=85&w=400',
-  healthy: 'https://images.unsplash.com/photo-1609357912334-e96886c0212b?crop=entropy&cs=srgb&fm=jpg&q=85&w=500',
+  healthy: 'https://images.unsplash.com/photo-1728727267814-792db55ce678?crop=entropy&cs=srgb&fm=jpg&q=85&w=500',
+  beforeModel: 'https://images.pexels.com/photos/5588000/pexels-photo-5588000.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=600&w=500',
+  afterModel: 'https://images.unsplash.com/photo-1728727267814-792db55ce678?crop=entropy&cs=srgb&fm=jpg&q=85&w=500',
 };
 
 const TRACKER_PRODUCTS = [
-  { label: 'Cleanser', when: 'AM / PM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1780326845/celesta-glow/products/9cbffd4042f04e7d816d1825192c0ab4.webp' },
-  { label: 'Serum', when: 'AM / PM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1780327224/celesta-glow/products/201e80b87d604c84ad25548b6a4783c6.webp' },
-  { label: 'Moisturizer', when: 'AM / PM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1790225020/celesta-glow/products/1a2b9e09601541cfa94430cac3cb657d.jpg' },
-  { label: 'Sunscreen', when: 'AM', img: 'https://res.cloudinary.com/dtj1zuhkl/image/upload/f_auto,q_auto,w_200/v1780327417/celesta-glow/products/e199648f7c6f4fe2b91f7a408211758e.jpg' },
+  { label: 'Cleanser', when: 'AM / PM', img: 'https://images.unsplash.com/photo-1612705166160-97d3b2e8e212?crop=entropy&cs=srgb&fm=jpg&q=80&w=200' },
+  { label: 'Serum', when: 'AM / PM', img: 'https://images.unsplash.com/photo-1654115350830-284e9fb002c7?crop=entropy&cs=srgb&fm=jpg&q=80&w=200' },
+  { label: 'Moisturizer', when: 'AM / PM', img: 'https://images.unsplash.com/photo-1654967102743-53295f5a7142?crop=entropy&cs=srgb&fm=jpg&q=80&w=200' },
+  { label: 'Sunscreen', when: 'AM', img: 'https://images.unsplash.com/photo-1654967441664-2a9ee470db7c?crop=entropy&cs=srgb&fm=jpg&q=80&w=200' },
 ];
 
 function MetricRow({ icon: Icon, label, value, up }) {

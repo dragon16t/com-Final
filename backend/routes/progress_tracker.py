@@ -26,6 +26,7 @@ import re
 import base64
 import logging
 import hashlib
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -313,25 +314,20 @@ async def tracker_enroll(req: EnrollRequest, authorization: Optional[str] = Head
         "updated_at": _iso(now),
     }
 
-    if qualifying:
-        base.update({
-            "plan": "free",
-            "status": "active",
-            "started_at": _iso(now),
-            "free_until": _iso(now + timedelta(days=FREE_DAYS)),
-            "qualifying_order_id": qualifying.get("order_id"),
-            "created_at": _iso(now),
-        })
-        await db.trackers.update_one({"email": email}, {"$set": base}, upsert=True)
-        return {"success": True, "plan": "free", "needs_subscription": False,
-                "free_until": base["free_until"],
-                "message": f"Your free 1-month AI progress tracker is active! (Order {qualifying.get('order_id')})"}
-
-    # No qualifying order -> must subscribe to activate
-    base.update({"plan": "pending", "status": "pending_subscription", "created_at": _iso(now)})
+    # FREE for everyone, always. First month is free; after 30 days the plan
+    # shows ₹499/month as *information only* — we never block access or ask to pay.
+    base.update({
+        "plan": "free",
+        "status": "active",
+        "started_at": _iso(now),
+        "free_until": _iso(now + timedelta(days=FREE_DAYS)),
+        "qualifying_order_id": qualifying.get("order_id") if qualifying else None,
+        "created_at": _iso(now),
+    })
     await db.trackers.update_one({"email": email}, {"$set": base}, upsert=True)
-    return {"success": True, "plan": "pending", "needs_subscription": True, "price": TRACKER_PRICE,
-            "message": f"Subscribe at ₹{TRACKER_PRICE}/month to activate your AI progress tracker."}
+    return {"success": True, "plan": "free", "needs_subscription": False,
+            "free_until": base["free_until"],
+            "message": "Your free 1-month AI Skin Tracker is active! Upload a photo to get your first analysis."}
 
 
 @router.post("/tracker/log")
@@ -404,6 +400,274 @@ async def tracker_logs(authorization: Optional[str] = Header(None)):
     session = await _user(authorization)
     logs = await db.tracker_logs.find({"email": session["email"]}, {"_id": 0}).sort("created_at", -1).to_list(365)
     return {"success": True, "logs": logs, "count": len(logs)}
+
+
+# =============================================================
+# AI Skin Scan — mandatory photo, full report (routine + diet + control)
+# =============================================================
+CONCERN_MAP = {
+    "aging": "aging", "acne": "acne-breakouts", "dullness": "brightening-glow",
+    "pigmentation": "pigmentation", "texture": "texture-pores", "hydration": "dryness",
+}
+
+
+async def _recommend_products(concern_slugs: list, limit: int = 4) -> list:
+    """Pick active catalog products that target the detected concerns."""
+    out, seen = [], set()
+    try:
+        if concern_slugs:
+            cursor = db.products.find(
+                {"is_active": True, "concerns": {"$in": concern_slugs}},
+                {"_id": 0, "slug": 1, "name": 1, "images": 1, "category": 1,
+                 "prepaid_price": 1, "mrp": 1},
+            ).limit(limit * 2)
+            async for p in cursor:
+                if p.get("slug") in seen:
+                    continue
+                seen.add(p.get("slug"))
+                imgs = p.get("images") or []
+                out.append({
+                    "slug": p.get("slug"), "name": p.get("name"),
+                    "image": imgs[0] if imgs else None,
+                    "category": p.get("category"),
+                    "price": p.get("prepaid_price") or p.get("mrp"),
+                })
+                if len(out) >= limit:
+                    break
+        if len(out) < limit:
+            cursor = db.products.find(
+                {"is_active": True}, {"_id": 0, "slug": 1, "name": 1, "images": 1,
+                 "category": 1, "prepaid_price": 1, "mrp": 1}
+            ).limit(limit * 2)
+            async for p in cursor:
+                if p.get("slug") in seen:
+                    continue
+                seen.add(p.get("slug"))
+                imgs = p.get("images") or []
+                out.append({
+                    "slug": p.get("slug"), "name": p.get("name"),
+                    "image": imgs[0] if imgs else None,
+                    "category": p.get("category"),
+                    "price": p.get("prepaid_price") or p.get("mrp"),
+                })
+                if len(out) >= limit:
+                    break
+    except Exception as e:
+        logger.warning(f"[tracker] product recommend failed: {e}")
+    return out
+
+
+async def _generate_full_routine(scores: dict, concerns: list, skin_type: str, age: str, products: list) -> dict:
+    """Gemini → a complete personalised report: AM/PM routine, diet, what to
+    control/avoid, weekly treatments. Robust static fallback."""
+    api_key = os.environ.get("EMERGENT_LLM_KEY", "")
+    prod_line = ", ".join([p.get("name") for p in products if p.get("name")]) or "Celesta Glow cleanser, serum, moisturizer and SPF"
+    concern_line = ", ".join(concerns) or "healthy glowing skin"
+    if api_key:
+        try:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+            prompt = f"""You are a dermatology coach for Celesta Glow.
+Skin type: {skin_type or 'normal'}. Age: {age or 'adult'}. Concerns: {concern_line}.
+AI skin scores (higher=better, 0-100): {json.dumps(scores)}.
+Recommend using these products where they fit: {prod_line}.
+Return ONLY JSON:
+{{
+ "summary":"<2 warm sentences on skin state & plan>",
+ "am_routine":[{{"step":"<name>","product":"<which product>","how":"<short how, <=14 words>"}}],
+ "pm_routine":[{{"step":"<name>","product":"<which product>","how":"<short how, <=14 words>"}}],
+ "diet":["<food/drink to eat for this skin, <=12 words>", "..."],
+ "control":["<habit/trigger to control or avoid, <=12 words>", "..."],
+ "weekly":["<weekly treatment, <=12 words>"]
+}}
+3-5 items in each AM/PM, 4-6 diet, 4-6 control, 1-3 weekly. India-aware, practical, no medical claims."""
+            chat = LlmChat(api_key=api_key, session_id=f"scan-{secrets_hex()}",
+                           system_message="You are a precise JSON-only skincare coaching API.").with_model("gemini", "gemini-2.5-flash")
+            resp = await chat.send_message(UserMessage(text=prompt))
+            raw = re.sub(r"^```(?:json)?\s*", "", (resp or "").strip())
+            raw = re.sub(r"\s*```$", "", raw)
+            m = re.search(r"\{[\s\S]*\}", raw)
+            data = json.loads(m.group(0) if m else raw)
+            if data.get("am_routine") and data.get("pm_routine"):
+                return data
+        except Exception as e:
+            logger.warning(f"[tracker] full routine gen failed: {e}")
+    # -------- static fallback --------
+    return {
+        "summary": "Your skin is responding well. Stay consistent with a simple AM/PM routine and the diet tips below.",
+        "am_routine": [
+            {"step": "Cleanse", "product": "Gentle Cleanser", "how": "Lukewarm water, gently massage, pat dry."},
+            {"step": "Serum", "product": "Advanced Face Serum", "how": "2-3 drops on damp skin."},
+            {"step": "Moisturise", "product": "Day Cream", "how": "Lock in hydration."},
+            {"step": "Protect", "product": "SPF 50 Sunscreen", "how": "Two-finger quantity, reapply midday."},
+        ],
+        "pm_routine": [
+            {"step": "Cleanse", "product": "Gentle Cleanser", "how": "Remove sunscreen & grime."},
+            {"step": "Treat", "product": "Advanced Retinol Night Cream", "how": "Pea-size, 2-3 nights/week."},
+            {"step": "Moisturise", "product": "Night Cream", "how": "Seal the barrier overnight."},
+        ],
+        "diet": ["Drink 2-3L water daily", "Vitamin-C fruits (amla, orange, guava)",
+                 "Omega-3: walnuts, flax, fish", "Green leafy vegetables", "Cut excess sugar & dairy"],
+        "control": ["Don't skip sunscreen", "Avoid over-exfoliating (max 2x/week)",
+                    "Don't pop pimples", "Limit late nights & stress", "Avoid very hot showers"],
+        "weekly": ["Clay mask once a week", "Gentle exfoliation 1-2x/week"],
+    }
+
+
+def secrets_hex():
+    return secrets.token_hex(3)
+
+
+SCAN_KEYS = [
+    ("pores", "texture_score"), ("acne", "acne_score"), ("dark_spots", "pigmentation_score"),
+    ("even_tone", "dullness_score"), ("fine_lines", "aging_score"), ("hydration", "beauty_score"),
+]
+
+
+class ScanRequest(BaseModel):
+    photo_base64: str                      # MANDATORY
+    skin_type: Optional[str] = None
+    age: Optional[str] = None
+    concerns: List[str] = []
+    notes: Optional[str] = None
+
+
+@router.post("/tracker/scan")
+async def tracker_scan(req: ScanRequest, authorization: Optional[str] = Header(None)):
+    """MANDATORY photo scan. Validates a human face, runs Gemini analysis, builds
+    a full personalised report (scores + AM/PM routine + recommended products +
+    diet + what to control) and SAVES it for the user dashboard AND admin reports."""
+    session = await _user(authorization)
+    email = session["email"]
+
+    if not req.photo_base64 or not req.photo_base64.strip():
+        raise HTTPException(status_code=400, detail="A photo is required to scan your skin. Please upload a clear selfie.")
+
+    # auto-enroll (free) if not yet enrolled
+    tracker = await db.trackers.find_one({"email": email}, {"_id": 0})
+    now = _now()
+    if not tracker:
+        tracker = {
+            "email": email, "customer_id": session.get("customer_id"),
+            "skin_type": req.skin_type, "age": req.age, "concerns": req.concerns,
+            "plan": "free", "status": "active", "started_at": _iso(now),
+            "free_until": _iso(now + timedelta(days=FREE_DAYS)), "created_at": _iso(now),
+            "updated_at": _iso(now),
+        }
+        await db.trackers.update_one({"email": email}, {"$set": tracker}, upsert=True)
+
+    raw = req.photo_base64
+    if raw.startswith("data:") and "," in raw:
+        raw = raw.split(",", 1)[1]
+
+    from services.ai_skin_analyzer import AISkinAnalyzer
+    analyzer = AISkinAnalyzer()
+    is_human = await analyzer.is_human_face(raw)
+    if not is_human:
+        raise HTTPException(status_code=422, detail="That doesn't look like a face — please upload a clear selfie of your face.")
+    analysis = await analyzer.analyze_face_image(raw, "front")
+
+    def _s(k):
+        try:
+            return float(analysis.get(k, 6))
+        except Exception:
+            return 6.0
+    scores = {label: round(_s(src) * 10) for label, src in SCAN_KEYS}
+    overall = round(sum(scores.values()) / len(scores))
+
+    # detected concerns -> taxonomy slugs
+    primary = (analysis.get("primary_concern") or "").lower()
+    concern_slugs = []
+    if primary in CONCERN_MAP:
+        concern_slugs.append(CONCERN_MAP[primary])
+    for label, src in SCAN_KEYS:
+        if _s(src) <= 5:
+            mapped = {"acne": "acne-breakouts", "dark_spots": "pigmentation",
+                      "even_tone": "brightening-glow", "fine_lines": "aging",
+                      "pores": "texture-pores", "hydration": "dryness"}.get(label)
+            if mapped and mapped not in concern_slugs:
+                concern_slugs.append(mapped)
+    if not concern_slugs:
+        concern_slugs = req.concerns or ["brightening-glow"]
+
+    products = await _recommend_products(concern_slugs, limit=4)
+    routine = await _generate_full_routine(scores, concern_slugs, req.skin_type or tracker.get("skin_type"),
+                                           req.age or tracker.get("age"), products)
+
+    # upload photo to cloudinary (best-effort)
+    photo_url = None
+    try:
+        from services import cloudinary_service
+        await cloudinary_service.ensure_configured(db)
+        import base64 as _b64
+        pid = f"tracker/{hashlib.md5(email.encode()).hexdigest()[:8]}/scan-{int(now.timestamp())}"
+        up = await cloudinary_service.upload_image(db, _b64.b64decode(raw), folder="celesta-tracker", public_id=pid)
+        photo_url = up.get("url")
+    except Exception as e:
+        logger.warning(f"[tracker] scan photo upload failed: {e}")
+
+    scan_id = hashlib.md5(f"{email}{now.timestamp()}".encode()).hexdigest()
+    report = {
+        "id": scan_id, "email": email, "customer_id": session.get("customer_id"),
+        "name": session.get("name"), "created_at": _iso(now), "date": now.strftime("%Y-%m-%d"),
+        "photo_url": photo_url, "skin_score": overall, "scores": scores,
+        "primary_concern": primary, "concerns": concern_slugs,
+        "skin_type": req.skin_type or tracker.get("skin_type"),
+        "age": req.age or tracker.get("age"),
+        "personalized_tip": analysis.get("personalized_tip"),
+        "summary": routine.get("summary"),
+        "am_routine": routine.get("am_routine", []), "pm_routine": routine.get("pm_routine", []),
+        "diet": routine.get("diet", []), "control": routine.get("control", []),
+        "weekly": routine.get("weekly", []),
+        "recommended_products": products, "notes": req.notes,
+    }
+    await db.skin_scans.insert_one(dict(report))
+    report.pop("_id", None)
+
+    # baseline on first scan
+    if tracker.get("baseline_score") is None:
+        await db.trackers.update_one({"email": email}, {"$set": {"baseline_score": overall}})
+
+    # ALSO save into db.routines so the existing Admin → Routine Reports shows it
+    try:
+        await db.routines.insert_one({
+            "id": scan_id, "source": "tracker_scan", "email": email,
+            "name": session.get("name"), "skin_type": report["skin_type"], "age": report["age"],
+            "concerns": concern_slugs, "photo_url": photo_url, "skin_score": overall,
+            "skin_score_factors": [{"label": k.replace("_", " ").title(), "score": v} for k, v in scores.items()],
+            "am": [{"slot": {"label": s.get("step")}, "product_name": s.get("product")} for s in routine.get("am_routine", [])],
+            "pm": [{"slot": {"label": s.get("step")}, "product_name": s.get("product")} for s in routine.get("pm_routine", [])],
+            "diet": routine.get("diet", []), "control": routine.get("control", []),
+            "weekly": routine.get("weekly", []),
+            "recommended_products": products,
+            "specialist_notes": [report.get("summary")] if report.get("summary") else [],
+            "created_at": _iso(now),
+        })
+    except Exception as e:
+        logger.warning(f"[tracker] routine mirror save failed: {e}")
+
+    # progress log entry (photo + score) for the timeline
+    try:
+        started = _parse_dt(tracker.get("started_at")) or now
+        day_number = max(1, (now - started).days + 1)
+        await db.tracker_logs.insert_one({
+            "id": scan_id, "email": email, "day_number": day_number,
+            "date": now.strftime("%Y-%m-%d"), "photo_url": photo_url,
+            "ai_suggestion": report.get("summary"), "ai_score": overall,
+            "ai_trend": "scan", "created_at": _iso(now), "scan_id": scan_id,
+        })
+        await db.trackers.update_one({"email": email}, {"$set": {"last_log_at": _iso(now)}})
+    except Exception as e:
+        logger.warning(f"[tracker] scan log save failed: {e}")
+
+    return {"success": True, "report": report}
+
+
+@router.get("/tracker/scans")
+async def tracker_scans(authorization: Optional[str] = Header(None)):
+    session = await _user(authorization)
+    scans = await db.skin_scans.find({"email": session["email"]}, {"_id": 0}).sort("created_at", -1).to_list(120)
+    return {"success": True, "scans": scans, "count": len(scans), "latest": scans[0] if scans else None}
+
 
 
 # =============================================================

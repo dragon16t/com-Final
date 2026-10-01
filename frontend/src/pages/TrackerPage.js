@@ -1,36 +1,28 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, Camera, Loader2, CheckCircle2, Mail, KeyRound, ArrowLeft,
-  Calendar, TrendingUp, Lock, Crown, Sun, Moon, Droplet, ShieldCheck,
-  ThumbsUp, ThumbsDown, Gift, ChevronRight,
+  Sparkles, Camera, Loader2, Mail, KeyRound, ArrowLeft, TrendingUp, Package,
+  LogOut, Upload, Check, Leaf, Ban, Sun, Moon, ChevronRight, Star, CalendarDays,
+  User, ClipboardList, ShoppingBag, Gift,
 } from 'lucide-react';
 
 const API = process.env.REACT_APP_BACKEND_URL;
 const TOKEN_KEY = 'cg_auth_token';
 const USER_KEY = 'cg_auth_user';
 
-const TASK_ICON = { use: Droplet, care: ShieldCheck, do: ThumbsUp, dont: ThumbsDown };
-const TASK_STYLE = {
-  use: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  care: 'bg-sky-50 text-sky-700 ring-sky-200',
-  do: 'bg-violet-50 text-violet-700 ring-violet-200',
-  dont: 'bg-rose-50 text-rose-700 ring-rose-200',
-};
+const authHeader = (t) => ({ headers: { Authorization: `Bearer ${t}` } });
 
-function loadRazorpay() {
-  return new Promise((resolve) => {
-    if (window.Razorpay) return resolve(true);
-    const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
   });
 }
 
-/* ------------------------------- LOGIN GATE ------------------------------- */
+/* ----------------------------------------------------------------- LOGIN GATE */
 function LoginGate({ onLogin }) {
   const [step, setStep] = useState('email');
   const [email, setEmail] = useState('');
@@ -67,383 +59,436 @@ function LoginGate({ onLogin }) {
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 mt-8">
-      <div className="bg-white rounded-3xl ring-1 ring-stone-200 shadow-sm p-6 sm:p-8">
-        <div className="w-14 h-14 rounded-2xl bg-emerald-600 grid place-items-center mx-auto mb-4">
-          <Sparkles size={26} className="text-white" />
+    <div className="max-w-md mx-auto px-4 mt-10">
+      <div className="bg-white rounded-3xl border border-stone-100 shadow-xl shadow-stone-200/50 p-7">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+          <Sparkles className="text-emerald-600" size={26} />
         </div>
-        <h1 className="font-heading text-xl font-black text-stone-900 text-center">Your AI Skin Progress Tracker</h1>
-        <p className="text-sm text-stone-500 text-center mt-1 mb-6">Login with your email to access daily tasks, photo progress & AI suggestions.</p>
-
+        <h1 className="text-xl font-black text-stone-900 text-center">Your Glow Dashboard</h1>
+        <p className="text-sm text-stone-500 text-center mt-1 mb-6">
+          Login with your email to access your skin scan, daily routine, progress & orders.
+        </p>
         {step === 'email' ? (
           <form onSubmit={sendOtp} className="space-y-3">
-            <label className="block text-xs font-bold text-stone-500 uppercase tracking-wide">Email address</label>
-            <div className="flex items-center gap-2 rounded-xl ring-1 ring-stone-200 px-3 focus-within:ring-2 focus-within:ring-emerald-500">
-              <Mail size={16} className="text-stone-400" />
+            <div className="flex items-center gap-2 border border-stone-200 rounded-xl px-3 py-3 focus-within:ring-2 ring-emerald-500">
+              <Mail size={18} className="text-stone-400" />
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@email.com" data-testid="tracker-login-email"
-                className="flex-1 py-3 text-sm outline-none bg-transparent" />
+                className="flex-1 outline-none text-sm bg-transparent" />
             </div>
             <button disabled={loading} data-testid="tracker-send-otp"
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
+              className="w-full inline-flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-3.5 rounded-xl transition-colors disabled:opacity-60">
               {loading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />} Send login code
             </button>
           </form>
         ) : (
           <form onSubmit={verifyOtp} className="space-y-3">
             {msg && <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">{msg}</p>}
-            <label className="block text-xs font-bold text-stone-500 uppercase tracking-wide">6-digit code</label>
-            <input inputMode="numeric" maxLength={6} required value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-              placeholder="••••••" data-testid="tracker-otp-input"
-              className="w-full py-3 text-center text-2xl font-black tracking-[0.4em] rounded-xl ring-1 ring-stone-200 outline-none focus:ring-2 focus:ring-emerald-500" />
+            <input type="text" inputMode="numeric" required value={otp} maxLength={6}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+              placeholder="6-digit code" data-testid="tracker-otp-input"
+              className="w-full border border-stone-200 rounded-xl px-3 py-3 outline-none text-center text-lg tracking-[0.4em] font-bold focus:ring-2 ring-emerald-500" />
             <button disabled={loading} data-testid="tracker-verify-otp"
-              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Verify & continue
+              className="w-full inline-flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm py-3.5 rounded-xl transition-colors disabled:opacity-60">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} Verify & continue
             </button>
             <button type="button" onClick={() => { setStep('email'); setOtp(''); setError(''); }}
-              className="w-full text-xs font-semibold text-stone-500 hover:text-stone-800">Change email</button>
+              className="w-full text-xs text-stone-500 hover:text-stone-800 flex items-center justify-center gap-1 pt-1">
+              <ArrowLeft size={13} /> Use a different email
+            </button>
           </form>
         )}
-        {error && <p className="text-xs text-rose-600 mt-3 text-center">{error}</p>}
+        {error && <p className="text-xs text-rose-600 bg-rose-50 rounded-lg px-3 py-2 mt-3">{error}</p>}
+        <p className="text-[11px] text-stone-400 text-center mt-5 flex items-center justify-center gap-1">
+          <Gift size={12} className="text-emerald-500" /> FREE for 1 month — no payment needed to start.
+        </p>
       </div>
     </div>
   );
 }
 
-/* ------------------------------- MAIN PAGE -------------------------------- */
-export default function TrackerPage() {
-  const [token, setToken] = useState(() => (typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null));
-  const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [enrolling, setEnrolling] = useState(false);
-  const [busy, setBusy] = useState(false);
+/* ----------------------------------------------------------------- SCORE RING */
+function ScoreRing({ score = 0, size = 96 }) {
+  const r = 34, c = 2 * Math.PI * r, off = c - (Math.max(0, Math.min(100, score)) / 100) * c;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
+        <circle cx="40" cy="40" r={r} fill="none" stroke="#e7f2ec" strokeWidth="7" />
+        <circle cx="40" cy="40" r={r} fill="none" stroke="#059669" strokeWidth="7" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={off} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-black text-stone-900 leading-none">{score}</span>
+        <span className="text-[10px] text-stone-400 font-semibold">/100</span>
+      </div>
+    </div>
+  );
+}
+
+const SCORE_LABELS = {
+  pores: 'Pores', acne: 'Acne', dark_spots: 'Dark Spots',
+  even_tone: 'Even Tone', fine_lines: 'Fine Lines', hydration: 'Hydration',
+};
+
+/* ----------------------------------------------------------------- REPORT VIEW */
+function ReportView({ report }) {
+  if (!report) return null;
+  const scores = report.scores || {};
+  const Routine = ({ title, icon: Icon, steps }) => (
+    <div className="bg-white rounded-2xl border border-stone-100 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Icon size={16} className="text-emerald-600" />
+        <span className="text-sm font-black text-stone-900">{title}</span>
+      </div>
+      <ol className="space-y-2.5">
+        {(steps || []).map((s, i) => (
+          <li key={i} className="flex gap-3">
+            <span className="w-5 h-5 shrink-0 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+            <div>
+              <p className="text-[13px] font-bold text-stone-800">{s.step}{s.product ? <span className="font-medium text-emerald-700"> · {s.product}</span> : null}</p>
+              {s.how && <p className="text-[12px] text-stone-500">{s.how}</p>}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+  const Bullets = ({ title, icon: Icon, items, tone }) => (
+    <div className="bg-white rounded-2xl border border-stone-100 p-4">
+      <div className="flex items-center gap-2 mb-2.5">
+        <Icon size={16} className={tone === 'bad' ? 'text-rose-500' : 'text-emerald-600'} />
+        <span className="text-sm font-black text-stone-900">{title}</span>
+      </div>
+      <ul className="space-y-1.5">
+        {(items || []).map((t, i) => (
+          <li key={i} className="flex gap-2 text-[13px] text-stone-700">
+            <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${tone === 'bad' ? 'bg-rose-400' : 'bg-emerald-500'}`} />
+            {t}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* score + summary */}
+      <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl border border-emerald-100 p-4 flex gap-4 items-center">
+        <ScoreRing score={report.skin_score || 0} />
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700 mb-0.5">Your Skin Score</p>
+          <p className="text-sm text-stone-700 leading-snug">{report.summary || report.personalized_tip}</p>
+        </div>
+      </div>
+      {/* scores grid */}
+      <div className="bg-white rounded-2xl border border-stone-100 p-4">
+        <p className="text-sm font-black text-stone-900 mb-3">Skin Analysis</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-5 gap-y-3">
+          {Object.entries(scores).map(([k, v]) => (
+            <div key={k}>
+              <div className="flex justify-between text-[12px] mb-1">
+                <span className="text-stone-600">{SCORE_LABELS[k] || k}</span>
+                <span className="font-bold text-stone-800">{v}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600" style={{ width: `${v}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* routine */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Routine title="Morning Routine" icon={Sun} steps={report.am_routine} />
+        <Routine title="Night Routine" icon={Moon} steps={report.pm_routine} />
+      </div>
+      {/* diet + control */}
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Bullets title="Diet to glow" icon={Leaf} items={report.diet} />
+        <Bullets title="What to control / avoid" icon={Ban} items={report.control} tone="bad" />
+      </div>
+      {report.weekly?.length ? <Bullets title="Weekly treatments" icon={Star} items={report.weekly} /> : null}
+      {/* recommended products */}
+      {report.recommended_products?.length ? (
+        <div className="bg-white rounded-2xl border border-stone-100 p-4">
+          <p className="text-sm font-black text-stone-900 mb-3">Recommended for your skin</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {report.recommended_products.map((p) => (
+              <Link to={p.slug ? `/product/${p.slug}` : '/shop'} key={p.slug || p.name} className="group">
+                <div className="rounded-xl bg-stone-50 border border-stone-100 aspect-square flex items-center justify-center overflow-hidden">
+                  {p.image ? <img src={p.image} alt={p.name} className="w-full h-full object-contain p-1.5 group-hover:scale-105 transition-transform" />
+                    : <ShoppingBag size={24} className="text-stone-300" />}
+                </div>
+                <p className="text-[12px] font-bold text-stone-800 mt-1 truncate">{p.name}</p>
+                {p.price ? <p className="text-[11px] text-emerald-700 font-bold">₹{p.price}</p> : null}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- SCAN PANEL */
+function ScanPanel({ token, onScanned, latest }) {
+  const [preview, setPreview] = useState(null);
+  const [dataUrl, setDataUrl] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // enroll form
-  const [skinType, setSkinType] = useState('all');
-  const [age, setAge] = useState('25-35');
-  const [concerns, setConcerns] = useState([]);
-  // daily log form
-  const [photo, setPhoto] = useState(null);
-  const [notes, setNotes] = useState('');
+  const [report, setReport] = useState(latest || null);
+  const fileRef = useRef(null);
 
-  const auth = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
-  const load = useCallback(async () => {
-    if (!token) { setLoading(false); return; }
-    setLoading(true);
-    try {
-      const r = await axios.get(`${API}/api/tracker/status`, { headers: { Authorization: `Bearer ${token}` } });
-      setStatus(r.data);
-    } catch (e) {
-      if (e.response?.status === 401) { localStorage.removeItem(TOKEN_KEY); setToken(null); }
-    } finally { setLoading(false); }
-  }, [token]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const toggleConcern = (c) =>
-    setConcerns((prev) => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
-
-  const enroll = async () => {
-    setEnrolling(true); setError('');
-    try {
-      const r = await axios.post(`${API}/api/tracker/enroll`,
-        { skin_type: skinType, age, concerns }, auth);
-      if (r.data.needs_subscription) { await subscribe(); }
-      await load();
-    } catch (e) {
-      setError(e.response?.data?.detail || 'Could not enroll. Try again.');
-    } finally { setEnrolling(false); }
-  };
-
-  const subscribe = async () => {
-    setBusy(true); setError('');
-    try {
-      const ok = await loadRazorpay();
-      if (!ok) throw new Error('Could not load payment gateway');
-      const r = await axios.post(`${API}/api/tracker/subscribe`, {}, auth);
-      const { subscription_id, key_id, amount, customer_email } = r.data;
-      const rzp = new window.Razorpay({
-        key: key_id,
-        subscription_id,
-        name: 'Celesta Glow',
-        description: `AI Skin Tracker — ₹${amount}/month auto-pay`,
-        theme: { color: '#059669' },
-        prefill: { email: customer_email },
-        handler: async (resp) => {
-          try {
-            await axios.post(`${API}/api/tracker/subscribe/verify`, {
-              razorpay_payment_id: resp.razorpay_payment_id,
-              razorpay_subscription_id: resp.razorpay_subscription_id,
-              razorpay_signature: resp.razorpay_signature,
-            }, auth);
-            await load();
-          } catch (e) {
-            setError('Payment captured but verification failed. Contact support.');
-          }
-        },
-      });
-      rzp.open();
-    } catch (e) {
-      setError(e.response?.data?.detail || e.message || 'Subscription failed.');
-    } finally { setBusy(false); }
-  };
-
-  const onPhoto = (e) => {
+  const pick = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => setPhoto(reader.result);
-    reader.readAsDataURL(f);
+    setError('');
+    const url = await fileToDataUrl(f);
+    setPreview(URL.createObjectURL(f));
+    setDataUrl(url);
   };
 
-  const submitLog = async () => {
-    if (!photo && !notes.trim()) { setError('Add a photo or a note.'); return; }
-    setBusy(true); setError('');
+  const scan = async () => {
+    if (!dataUrl) { setError('A photo is required to scan your skin.'); return; }
+    setLoading(true); setError('');
     try {
-      await axios.post(`${API}/api/tracker/log`, { photo_base64: photo, notes }, auth);
-      setPhoto(null); setNotes('');
-      await load();
-    } catch (e) {
-      setError(e.response?.data?.detail || 'Could not save your entry.');
-    } finally { setBusy(false); }
+      const r = await axios.post(`${API}/api/tracker/scan`, { photo_base64: dataUrl }, authHeader(token));
+      setReport(r.data.report);
+      onScanned?.(r.data.report);
+    } catch (e2) {
+      setError(e2.response?.data?.detail || 'Scan failed. Please try a clearer selfie.');
+    } finally { setLoading(false); }
   };
-
-  if (!token) return <div className="min-h-screen bg-stone-50 py-6"><TopBack /><LoginGate onLogin={(t) => { setToken(t); }} /></div>;
-
-  if (loading) return (
-    <div className="min-h-screen bg-stone-50 grid place-items-center">
-      <Loader2 size={30} className="animate-spin text-emerald-600" />
-    </div>
-  );
-
-  const CONCERN_OPTS = [
-    { slug: 'brightening-glow', label: 'Brightening & Glow' },
-    { slug: 'aging', label: 'Anti-Aging' },
-    { slug: 'acne-breakouts', label: 'Acne & Breakouts' },
-    { slug: 'pigmentation', label: 'Pigmentation' },
-    { slug: 'texture-pores', label: 'Texture & Pores' },
-    { slug: 'hydration', label: 'Hydration' },
-  ];
 
   return (
-    <div className="min-h-screen bg-stone-50 pb-16">
-      <TopBack />
-      <div className="max-w-2xl mx-auto px-4 sm:px-6">
+    <div className="space-y-5">
+      <div className="bg-white rounded-2xl border border-stone-100 p-5">
+        <div className="flex items-start gap-2 mb-1">
+          <Camera size={18} className="text-emerald-600 mt-0.5" />
+          <div>
+            <p className="text-sm font-black text-stone-900">Scan your skin</p>
+            <p className="text-[12px] text-stone-500">A clear front selfie is <b className="text-stone-700">required</b> — our AI reads your skin to build your routine.</p>
+          </div>
+        </div>
 
-        {/* NOT ENROLLED */}
-        {status && !status.enrolled && (
-          <div className="mt-4 space-y-4">
-            <div className="bg-gradient-to-br from-emerald-600 to-teal-600 rounded-3xl p-6 text-white">
-              <div className="flex items-center gap-2 mb-2"><Sparkles size={20} /><span className="text-xs font-black uppercase tracking-wider">AI Skin Tracker</span></div>
-              <h1 className="font-heading text-2xl font-black leading-tight">Track your glow-up, day by day</h1>
-              <p className="text-sm text-white/90 mt-2">Daily AI tasks, photo progress & personalised improvement suggestions every 3 days.</p>
-              {status.eligible_free ? (
-                <div className="mt-4 bg-white/15 rounded-2xl p-3 flex items-center gap-2">
-                  <Gift size={18} /><p className="text-sm font-bold">You qualify for <b>1 month FREE</b> (order ≥ ₹{status.free_order_min})!</p>
-                </div>
-              ) : (
-                <div className="mt-4 bg-white/15 rounded-2xl p-3 flex items-center gap-2">
-                  <Crown size={18} /><p className="text-sm font-bold">₹{status.price}/month auto-pay subscription</p>
-                </div>
-              )}
+        <div className="mt-4 flex flex-col sm:flex-row gap-4 items-center">
+          <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-stone-200 bg-stone-50 overflow-hidden flex items-center justify-center shrink-0">
+            {preview ? <img src={preview} alt="preview" className="w-full h-full object-cover" />
+              : <Upload size={24} className="text-stone-300" />}
+          </div>
+          <div className="flex-1 w-full">
+            <input ref={fileRef} type="file" accept="image/*" capture="user" onChange={pick} className="hidden" data-testid="scan-file-input" />
+            <button onClick={() => fileRef.current?.click()} data-testid="scan-pick-photo"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 border border-emerald-200 bg-emerald-50 text-emerald-700 font-bold text-sm px-5 py-3 rounded-xl hover:bg-emerald-100 transition-colors">
+              <Camera size={16} /> {preview ? 'Change photo' : 'Upload / take photo'}
+            </button>
+            <button onClick={scan} disabled={!dataUrl || loading} data-testid="scan-run"
+              className="w-full sm:w-auto sm:ml-3 mt-3 sm:mt-0 inline-flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-sm px-6 py-3 rounded-xl transition-colors disabled:opacity-50">
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Analysing…</> : <><Sparkles size={16} /> Analyse my skin</>}
+            </button>
+            {!dataUrl && <p className="text-[11px] text-stone-400 mt-2">Photo is mandatory to generate your analysis.</p>}
+          </div>
+        </div>
+        {error && <p className="text-xs text-rose-600 bg-rose-50 rounded-lg px-3 py-2 mt-3">{error}</p>}
+      </div>
+
+      {report && <ReportView report={report} />}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- PROGRESS */
+function ProgressPanel({ token }) {
+  const [scans, setScans] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await axios.get(`${API}/api/tracker/scans`, authHeader(token));
+        setScans(r.data.scans || []);
+      } catch {} finally { setLoading(false); }
+    })();
+  }, [token]);
+
+  if (loading) return <div className="py-16 text-center text-stone-400"><Loader2 className="animate-spin mx-auto" /></div>;
+  if (!scans.length) return (
+    <div className="bg-white rounded-2xl border border-stone-100 p-10 text-center">
+      <TrendingUp size={28} className="text-stone-300 mx-auto mb-2" />
+      <p className="text-sm text-stone-500">No scans yet. Run your first skin scan to start tracking progress.</p>
+    </div>
+  );
+  const max = Math.max(...scans.map((s) => s.skin_score || 0), 100);
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-stone-100 p-4">
+        <p className="text-sm font-black text-stone-900 mb-3">Skin Score over time</p>
+        <div className="flex items-end gap-2 h-32">
+          {[...scans].reverse().map((s) => (
+            <div key={s.id} className="flex-1 flex flex-col items-center gap-1">
+              <div className="w-full bg-emerald-100 rounded-t-md flex items-end justify-center" style={{ height: `${((s.skin_score || 0) / max) * 100}%` }}>
+                <div className="w-full bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t-md" style={{ height: '100%' }} />
+              </div>
+              <span className="text-[10px] font-bold text-stone-600">{s.skin_score}</span>
+              <span className="text-[9px] text-stone-400">{(s.date || '').slice(5)}</span>
             </div>
-
-            <div className="bg-white rounded-3xl ring-1 ring-stone-200 p-5 space-y-4">
-              <h2 className="font-heading font-black text-stone-900">Tell us about your skin</h2>
-              <div>
-                <p className="text-xs font-bold text-stone-500 uppercase mb-2">Skin type</p>
-                <div className="flex flex-wrap gap-2">
-                  {['all', 'oily', 'dry', 'combination', 'sensitive'].map(s => (
-                    <button key={s} onClick={() => setSkinType(s)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold ring-1 capitalize transition-colors ${skinType === s ? 'bg-emerald-600 text-white ring-emerald-600' : 'bg-white text-stone-600 ring-stone-200'}`}>{s}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-stone-500 uppercase mb-2">Age group</p>
-                <div className="flex flex-wrap gap-2">
-                  {['18-24', '25-35', '35-50', '50+'].map(a => (
-                    <button key={a} onClick={() => setAge(a)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold ring-1 transition-colors ${age === a ? 'bg-emerald-600 text-white ring-emerald-600' : 'bg-white text-stone-600 ring-stone-200'}`}>{a}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-bold text-stone-500 uppercase mb-2">Your concerns</p>
-                <div className="flex flex-wrap gap-2">
-                  {CONCERN_OPTS.map(c => (
-                    <button key={c.slug} onClick={() => toggleConcern(c.slug)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold ring-1 transition-colors ${concerns.includes(c.slug) ? 'bg-violet-600 text-white ring-violet-600' : 'bg-white text-stone-600 ring-stone-200'}`}>{c.label}</button>
-                  ))}
-                </div>
-              </div>
-              {error && <p className="text-xs text-rose-600">{error}</p>}
-              <button onClick={enroll} disabled={enrolling} data-testid="tracker-enroll-btn"
-                className="w-full py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-                {enrolling ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                {status.eligible_free ? 'Start my FREE tracker' : `Subscribe ₹${status.price}/mo & start`}
-              </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {scans.map((s) => (
+          <div key={s.id} className="bg-white rounded-2xl border border-stone-100 p-3 flex gap-3">
+            <div className="w-16 h-16 rounded-xl overflow-hidden bg-stone-100 shrink-0">
+              {s.photo_url ? <img src={s.photo_url} alt="" className="w-full h-full object-cover" /> : <CalendarDays className="text-stone-300 m-auto mt-5" size={20} />}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[12px] font-bold text-stone-800">Score {s.skin_score}/100 · <span className="text-stone-400 font-medium">{s.date}</span></p>
+              <p className="text-[12px] text-stone-500 line-clamp-2">{s.summary || s.personalized_tip}</p>
             </div>
           </div>
-        )}
-
-        {/* ENROLLED */}
-        {status && status.enrolled && (
-          <div className="mt-4 space-y-4">
-            {/* status card */}
-            <div className="bg-white rounded-3xl ring-1 ring-stone-200 p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${status.plan === 'free' ? 'bg-emerald-100 text-emerald-700' : status.plan === 'paid' ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
-                      {status.plan === 'free' ? 'FREE MONTH' : status.plan === 'paid' ? 'PREMIUM' : 'PENDING'}
-                    </span>
-                    {status.has_access && <span className="text-[10px] font-bold text-stone-400">Day {status.day_number}</span>}
-                  </div>
-                  <h1 className="font-heading text-xl font-black text-stone-900 mt-1">My Progress</h1>
-                </div>
-                {status.has_access && (
-                  <div className="text-right">
-                    <p className="text-2xl font-black text-emerald-600">{status.days_left}</p>
-                    <p className="text-[10px] font-bold text-stone-400 uppercase">days left</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* expired / needs subscription */}
-            {!status.has_access && (
-              <div className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-3xl p-6 text-white text-center">
-                <Lock size={26} className="mx-auto mb-2" />
-                <h2 className="font-heading text-lg font-black">{status.plan === 'pending' ? 'Activate your tracker' : 'Your free month ended'}</h2>
-                <p className="text-sm text-white/90 mt-1 mb-4">Continue your AI skin journey for ₹{status.price}/month (auto-pay).</p>
-                {error && <p className="text-xs bg-white/20 rounded-lg px-3 py-2 mb-3">{error}</p>}
-                <button onClick={subscribe} disabled={busy} data-testid="tracker-subscribe-btn"
-                  className="w-full py-3 rounded-xl bg-white text-orange-600 font-black text-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                  {busy ? <Loader2 size={16} className="animate-spin" /> : <Crown size={16} />} Subscribe ₹{status.price}/month
-                </button>
-              </div>
-            )}
-
-            {status.has_access && (
-              <>
-                {/* today's tasks */}
-                <div className="bg-white rounded-3xl ring-1 ring-stone-200 p-5">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Calendar size={16} className="text-emerald-700" />
-                    <h2 className="font-heading font-black text-stone-900">Today's plan</h2>
-                  </div>
-                  {status.today_focus && <p className="text-sm text-emerald-700 font-semibold mb-3">{status.today_focus}</p>}
-                  <div className="space-y-2">
-                    {(status.today_tasks || []).map((t, i) => {
-                      const Icon = TASK_ICON[t.type] || Sun;
-                      return (
-                        <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-stone-50">
-                          <span className={`shrink-0 w-8 h-8 rounded-lg grid place-items-center ring-1 ${TASK_STYLE[t.type] || 'bg-stone-100 text-stone-600 ring-stone-200'}`}>
-                            <Icon size={15} />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="text-sm font-bold text-stone-900">{t.title}</p>
-                            {t.detail && <p className="text-xs text-stone-500 mt-0.5">{t.detail}</p>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* daily log */}
-                <div className="bg-white rounded-3xl ring-1 ring-stone-200 p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Camera size={16} className="text-emerald-700" />
-                    <h2 className="font-heading font-black text-stone-900">Log today's progress</h2>
-                  </div>
-                  <label className="block cursor-pointer">
-                    <div className={`rounded-2xl border-2 border-dashed ${photo ? 'border-emerald-300' : 'border-stone-200'} p-4 text-center transition-colors`}>
-                      {photo ? (
-                        <img src={photo} alt="preview" className="w-28 h-28 object-cover rounded-xl mx-auto ring-1 ring-emerald-200" />
-                      ) : (
-                        <div className="py-4">
-                          <Camera size={26} className="text-stone-300 mx-auto mb-1" />
-                          <p className="text-xs font-bold text-stone-500">Tap to add today's selfie</p>
-                        </div>
-                      )}
-                    </div>
-                    <input type="file" accept="image/*" capture="user" onChange={onPhoto} className="hidden" data-testid="tracker-photo-input" />
-                  </label>
-                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="How does your skin feel today? (optional)"
-                    className="w-full mt-3 rounded-xl ring-1 ring-stone-200 p-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500 resize-none" data-testid="tracker-notes" />
-                  {error && <p className="text-xs text-rose-600 mt-2">{error}</p>}
-                  <button onClick={submitLog} disabled={busy} data-testid="tracker-log-btn"
-                    className="w-full mt-3 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-                    {busy ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Save entry
-                  </button>
-                  <p className="text-[11px] text-stone-400 text-center mt-2">AI improvement suggestions arrive every 3 days ✨</p>
-                </div>
-
-                {/* timeline */}
-                {(status.logs || []).length > 0 && (
-                  <div className="bg-white rounded-3xl ring-1 ring-stone-200 p-5">
-                    <div className="flex items-center gap-2 mb-3">
-                      <TrendingUp size={16} className="text-emerald-700" />
-                      <h2 className="font-heading font-black text-stone-900">Your journey</h2>
-                    </div>
-                    <div className="space-y-3">
-                      {status.logs.map((l) => (
-                        <div key={l.id} className="flex gap-3 p-3 rounded-2xl bg-stone-50">
-                          {l.photo_url ? (
-                            <img src={l.photo_url} alt={`Day ${l.day_number}`} className="w-16 h-16 object-cover rounded-xl ring-1 ring-stone-200 shrink-0" />
-                          ) : (
-                            <div className="w-16 h-16 rounded-xl bg-stone-100 grid place-items-center shrink-0"><Moon size={18} className="text-stone-300" /></div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-black text-stone-900">Day {l.day_number}</span>
-                              <span className="text-[10px] text-stone-400">{l.date}</span>
-                              {l.ai_trend && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${l.ai_trend === 'improving' ? 'bg-emerald-100 text-emerald-700' : l.ai_trend === 'needs attention' ? 'bg-rose-100 text-rose-700' : 'bg-stone-100 text-stone-500'}`}>{l.ai_trend}</span>}
-                            </div>
-                            {l.notes && <p className="text-xs text-stone-600 mt-0.5">{l.notes}</p>}
-                            {l.ai_suggestion && (
-                              <p className="text-xs text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5 mt-1.5 flex gap-1.5">
-                                <Sparkles size={13} className="shrink-0 mt-0.5" />{l.ai_suggestion}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {status.plan === 'free' && (
-                  <Link to="#" onClick={(e) => { e.preventDefault(); subscribe(); }}
-                    className="block bg-white rounded-2xl ring-1 ring-stone-200 p-4 hover:ring-amber-300 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <Crown size={18} className="text-amber-500" />
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-stone-900">Keep it going after your free month</p>
-                        <p className="text-xs text-stone-500">₹{status.price}/month auto-pay — cancel anytime</p>
-                      </div>
-                      <ChevronRight size={16} className="text-stone-400" />
-                    </div>
-                  </Link>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );
 }
 
-function TopBack() {
-  return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-2">
-      <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-semibold text-stone-500 hover:text-stone-900">
-        <ArrowLeft size={16} /> Home
-      </Link>
+/* ----------------------------------------------------------------- ORDERS */
+function OrdersPanel({ token }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await axios.get(`${API}/api/auth/orders`, authHeader(token));
+        setOrders(r.data.orders || []);
+      } catch {} finally { setLoading(false); }
+    })();
+  }, [token]);
+
+  if (loading) return <div className="py-16 text-center text-stone-400"><Loader2 className="animate-spin mx-auto" /></div>;
+  if (!orders.length) return (
+    <div className="bg-white rounded-2xl border border-stone-100 p-10 text-center">
+      <Package size={28} className="text-stone-300 mx-auto mb-2" />
+      <p className="text-sm text-stone-500 mb-3">You have no orders yet.</p>
+      <Link to="/shop" className="inline-flex items-center gap-1 text-sm font-bold text-emerald-700">Start shopping <ChevronRight size={15} /></Link>
     </div>
   );
+  return (
+    <div className="space-y-3">
+      {orders.map((o) => (
+        <div key={o.order_id} className="bg-white rounded-2xl border border-stone-100 p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-black text-stone-900">#{o.order_id}</span>
+            <span className="text-[11px] font-bold uppercase tracking-wide px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">{o.status || 'placed'}</span>
+          </div>
+          <p className="text-[12px] text-stone-400 mt-0.5">{(o.created_at || '').slice(0, 10)} · ₹{o.total_amount} · {o.payment_method}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {(o.items || []).slice(0, 4).map((it, i) => (
+              <span key={i} className="text-[11px] bg-stone-50 border border-stone-100 rounded-lg px-2 py-1 text-stone-600">
+                {(it.name || it.short_name)} ×{it.quantity || it.qty || 1}
+              </span>
+            ))}
+          </div>
+          {o.tracking_url && (
+            <a href={o.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[12px] font-bold text-emerald-700 mt-2">
+              Track package <ChevronRight size={14} />
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- DASHBOARD */
+const TABS = [
+  { id: 'scan', label: 'Scan & Routine', icon: Sparkles },
+  { id: 'progress', label: 'Progress', icon: TrendingUp },
+  { id: 'orders', label: 'Orders', icon: Package },
+  { id: 'profile', label: 'Profile', icon: User },
+];
+
+function Dashboard({ token, user, onLogout }) {
+  const [tab, setTab] = useState('scan');
+  const [latest, setLatest] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await axios.get(`${API}/api/tracker/scans`, authHeader(token));
+        setLatest(r.data.latest || null);
+      } catch {}
+    })();
+  }, [token]);
+
+  return (
+    <div className="max-w-5xl mx-auto px-3 sm:px-6 py-6">
+      {/* header */}
+      <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-3xl p-5 sm:p-6 text-white mb-5 relative overflow-hidden">
+        <div className="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-white/10" />
+        <div className="flex items-center justify-between relative">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-white/80">Welcome back</p>
+            <h1 className="text-xl sm:text-2xl font-black">{user?.name || user?.email?.split('@')[0] || 'Glow member'}</h1>
+            <span className="inline-flex items-center gap-1 mt-2 bg-white/15 rounded-full px-2.5 py-1 text-[11px] font-bold">
+              <Gift size={12} /> Free plan active · 1 month
+            </span>
+          </div>
+          <button onClick={onLogout} data-testid="dashboard-logout" className="inline-flex items-center gap-1 bg-white/15 hover:bg-white/25 rounded-full px-3 py-2 text-xs font-bold transition-colors">
+            <LogOut size={14} /> Logout
+          </button>
+        </div>
+      </div>
+
+      {/* tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1 mb-5 -mx-1 px-1">
+        {TABS.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} data-testid={`dash-tab-${t.id}`}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap px-4 py-2.5 rounded-full text-sm font-bold transition-colors ${tab === t.id ? 'bg-emerald-700 text-white' : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'}`}>
+            <t.icon size={15} /> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'scan' && <ScanPanel token={token} latest={latest} onScanned={setLatest} />}
+      {tab === 'progress' && <ProgressPanel token={token} />}
+      {tab === 'orders' && <OrdersPanel token={token} />}
+      {tab === 'profile' && (
+        <div className="bg-white rounded-2xl border border-stone-100 p-5 space-y-3 max-w-md">
+          <div className="flex items-center gap-2"><User size={16} className="text-emerald-600" /><span className="text-sm font-black text-stone-900">Profile</span></div>
+          <div className="text-sm text-stone-600"><span className="text-stone-400">Email</span><p className="font-bold text-stone-800">{user?.email}</p></div>
+          {user?.phone && <div className="text-sm text-stone-600"><span className="text-stone-400">Phone</span><p className="font-bold text-stone-800">{user.phone}</p></div>}
+          <Link to="/routine" className="inline-flex items-center gap-1 text-sm font-bold text-emerald-700"><ClipboardList size={15} /> Build a routine</Link>
+          <button onClick={onLogout} className="w-full mt-2 inline-flex items-center justify-center gap-2 border border-stone-200 text-stone-700 font-bold text-sm py-3 rounded-xl hover:bg-stone-50"><LogOut size={15} /> Logout</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------------------------------------------- PAGE */
+export default function TrackerPage() {
+  const [token, setToken] = useState(() => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } });
+  const [user, setUser] = useState(() => { try { return JSON.parse(localStorage.getItem(USER_KEY) || 'null'); } catch { return null; } });
+
+  const logout = useCallback(() => {
+    try { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); } catch {}
+    setToken(null); setUser(null);
+  }, []);
+
+  // validate token on mount
+  useEffect(() => {
+    if (!token) return;
+    axios.get(`${API}/api/auth/me`, authHeader(token)).then((r) => {
+      if (r.data?.user) { setUser(r.data.user); try { localStorage.setItem(USER_KEY, JSON.stringify(r.data.user)); } catch {} }
+    }).catch(() => logout());
+  }, [token, logout]);
+
+  const TopBack = () => (
+    <div className="max-w-5xl mx-auto px-4 pt-5">
+      <Link to="/" className="inline-flex items-center gap-1 text-sm text-stone-500 hover:text-stone-800"><ArrowLeft size={15} /> Back to shop</Link>
+    </div>
+  );
+
+  if (!token) return <div className="min-h-screen bg-stone-50 pb-16"><TopBack /><LoginGate onLogin={(t, u) => { setToken(t); setUser(u); }} /></div>;
+  return <div className="min-h-screen bg-stone-50 pb-16"><TopBack /><Dashboard token={token} user={user} onLogout={logout} /></div>;
 }

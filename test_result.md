@@ -260,3 +260,78 @@ agent_communication:
     -message: "Two backend items to verify after this iteration. (1) AUTH/OTP: POST /api/auth/send-otp {email} should return success and delivered:true (Gmail SMTP configured via .env). Then verify-otp: fetch the generated OTP from db.customer_otps (or backend logs) and POST /api/auth/verify-otp {email, otp} — expect success:true + a token. Confirm /api/customer/send-otp returns 404 (that was the old wrong path). (2) TAXONOMY REFLECTION: admin edits must reflect on public endpoints — PUT /api/admin/concerns/{slug} (header X-Admin-Token: celestaglow2024) then GET /api/concerns should show the change; same for /api/admin/categories/{slug} -> GET /api/categories. Admin token/password is 'celestaglow2024'. Do NOT delete real concerns/categories — edit a benign field (e.g., description or sort_order) and restore it if needed."
     -agent: "testing"
     -message: "✅ BOTH BACKEND TESTS PASSED (2/2). (1) Customer OTP Login: Complete end-to-end flow working - send-otp returns delivered=true (Gmail SMTP), OTP readable from DB, verify-otp returns valid token + user object, old wrong path /api/customer/send-otp correctly returns 404. (2) Taxonomy Reflection: Admin edits to concerns/categories via PUT /api/admin/* are immediately reflected on public GET /api/concerns and GET /api/categories endpoints. GET /api/niches also working (returns 1 active niche). All changes tested and restored. No issues found."
+
+  - task: "AI Skin Tracker enroll endpoint (always free, no payment gate)"
+    implemented: true
+    working: true
+    file: "routes/progress_tracker.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: POST /api/tracker/enroll with Bearer token and body {skin_type: 'oily', age: '25-34', concerns: ['acne-breakouts']} returns HTTP 200 with plan='free' and needs_subscription=false. Enrollment is always free with no payment gate. Subsequent enrollments return {already: true, message: 'Tracker already active'}. Working correctly."
+
+  - task: "AI Skin Tracker scan endpoint requires photo (mandatory validation)"
+    implemented: true
+    working: true
+    file: "routes/progress_tracker.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: POST /api/tracker/scan with empty body {} returns HTTP 422 (Pydantic validation error) with detail about photo_base64 field being required. Note: Returns 422 instead of 400 as this is a Pydantic validation error (semantically correct). Photo is mandatory for scanning."
+
+  - task: "AI Skin Tracker scan with real face photo returns full report"
+    implemented: true
+    working: true
+    file: "routes/progress_tracker.py, services/ai_skin_analyzer.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: POST /api/tracker/scan with Bearer token and {photo_base64: '<base64 jpeg>'} returns HTTP 200 with success=true and complete report object containing: skin_score (96), scores object with 6 metrics (pores, acne, dark_spots, even_tone, fine_lines, hydration), am_routine (4 items), pm_routine (4 items), diet (6 items), control (6 items), and recommended_products (4 items). All required fields present and non-empty. Gemini AI analysis working correctly."
+
+  - task: "AI Skin Tracker scans list endpoint"
+    implemented: true
+    working: true
+    file: "routes/progress_tracker.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: GET /api/tracker/scans with Bearer token returns HTTP 200 with success=true, scans array (3 items), and latest object containing the most recent scan with id and skin_score. List endpoint working correctly."
+
+  - task: "Admin routine reports capture tracker_scan entries"
+    implemented: true
+    working: true
+    file: "routes/progress_tracker.py, routes/routines.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: GET /api/admin/routines (X-Admin-Token: celestaglow2024) returns HTTP 200 with routines array. Found 3 tracker_scan entries for scan_qa@example.com with source='tracker_scan', containing all required fields: email, skin_score, diet (6 items), control (6 items), and recommended_products (4 items). Tracker scans are correctly mirrored to db.routines collection for admin visibility."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.2"
+  test_sequence: 5
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "testing"
+    -message: "✅ ALL AI SKIN TRACKER BACKEND TESTS PASSED (5/5). Complete flow tested: (1) OTP authentication working (send-otp + verify-otp), (2) Enroll always returns plan='free' with needs_subscription=false (no payment gate), (3) Scan without photo correctly returns 422 validation error, (4) Scan with real face photo returns complete report with all required fields (skin_score, scores, am_routine, pm_routine, diet, control, recommended_products), (5) Scans list returns array with latest scan, (6) Admin routines endpoint captures tracker_scan entries with source='tracker_scan' and all required fields. All endpoints working correctly. Note: Scan without photo returns HTTP 422 (Pydantic validation) instead of 400 - this is semantically correct for validation errors."

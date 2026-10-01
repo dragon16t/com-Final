@@ -477,9 +477,10 @@ Return ONLY JSON:
  "pm_routine":[{{"step":"<name>","product":"<which product>","how":"<short how, <=14 words>"}}],
  "diet":["<food/drink to eat for this skin, <=12 words>", "..."],
  "control":["<habit/trigger to control or avoid, <=12 words>", "..."],
+ "natural_remedies":["<safe home/natural remedy for this skin, <=14 words>", "..."],
  "weekly":["<weekly treatment, <=12 words>"]
 }}
-3-5 items in each AM/PM, 4-6 diet, 4-6 control, 1-3 weekly. India-aware, practical, no medical claims."""
+3-5 items in each AM/PM, 4-6 diet, 4-6 control, 3-5 natural_remedies, 1-3 weekly. India-aware, practical, no medical claims."""
             chat = LlmChat(api_key=api_key, session_id=f"scan-{secrets_hex()}",
                            system_message="You are a precise JSON-only skincare coaching API.").with_model("gemini", "gemini-2.5-flash")
             resp = await chat.send_message(UserMessage(text=prompt))
@@ -509,6 +510,8 @@ Return ONLY JSON:
                  "Omega-3: walnuts, flax, fish", "Green leafy vegetables", "Cut excess sugar & dairy"],
         "control": ["Don't skip sunscreen", "Avoid over-exfoliating (max 2x/week)",
                     "Don't pop pimples", "Limit late nights & stress", "Avoid very hot showers"],
+        "natural_remedies": ["Cool aloe vera gel to calm redness", "Green tea compress for puffiness",
+                             "Honey mask once a week for hydration", "Rose water as a gentle toner"],
         "weekly": ["Clay mask once a week", "Gentle exfoliation 1-2x/week"],
     }
 
@@ -617,6 +620,7 @@ async def tracker_scan(req: ScanRequest, authorization: Optional[str] = Header(N
         "summary": routine.get("summary"),
         "am_routine": routine.get("am_routine", []), "pm_routine": routine.get("pm_routine", []),
         "diet": routine.get("diet", []), "control": routine.get("control", []),
+        "natural_remedies": routine.get("natural_remedies", []),
         "weekly": routine.get("weekly", []),
         "recommended_products": products, "notes": req.notes,
     }
@@ -637,6 +641,7 @@ async def tracker_scan(req: ScanRequest, authorization: Optional[str] = Header(N
             "am": [{"slot": {"label": s.get("step")}, "product_name": s.get("product")} for s in routine.get("am_routine", [])],
             "pm": [{"slot": {"label": s.get("step")}, "product_name": s.get("product")} for s in routine.get("pm_routine", [])],
             "diet": routine.get("diet", []), "control": routine.get("control", []),
+            "natural_remedies": routine.get("natural_remedies", []),
             "weekly": routine.get("weekly", []),
             "recommended_products": products,
             "specialist_notes": [report.get("summary")] if report.get("summary") else [],
@@ -667,6 +672,114 @@ async def tracker_scans(authorization: Optional[str] = Header(None)):
     session = await _user(authorization)
     scans = await db.skin_scans.find({"email": session["email"]}, {"_id": 0}).sort("created_at", -1).to_list(120)
     return {"success": True, "scans": scans, "count": len(scans), "latest": scans[0] if scans else None}
+
+
+# =============================================================
+# Daily routine — the "use every day" loop (ticks + daily photo)
+# =============================================================
+class DayCompleteRequest(BaseModel):
+    completed: dict = {}                 # {"am-0": true, "pm-1": true, ...}
+    photo_base64: Optional[str] = None
+    notes: Optional[str] = None
+    mood: Optional[str] = None
+
+
+@router.get("/tracker/day")
+async def tracker_day(authorization: Optional[str] = Header(None)):
+    """Today's personalised routine checklist derived from the latest scan,
+    plus today's completion state and a 30-day subscription nudge flag."""
+    session = await _user(authorization)
+    email = session["email"]
+    tracker = await db.trackers.find_one({"email": email}, {"_id": 0}) or {}
+    latest = await db.skin_scans.find_one({"email": email}, {"_id": 0}, sort=[("created_at", -1)])
+
+    started = _parse_dt(tracker.get("started_at")) or _now()
+    now = _now()
+    day_number = max(1, (now - started).days + 1)
+    date_key = now.strftime("%Y-%m-%d")
+
+    am = (latest or {}).get("am_routine") or []
+    pm = (latest or {}).get("pm_routine") or []
+    today_doc = await db.tracker_days.find_one({"email": email, "date": date_key}, {"_id": 0}) or {}
+    streak = await db.tracker_days.count_documents({"email": email, "any_done": True})
+
+    return {
+        "success": True,
+        "has_scan": bool(latest),
+        "day_number": day_number,
+        "date": date_key,
+        "am_routine": am,
+        "pm_routine": pm,
+        "diet": (latest or {}).get("diet", []),
+        "control": (latest or {}).get("control", []),
+        "natural_remedies": (latest or {}).get("natural_remedies", []),
+        "summary": (latest or {}).get("summary"),
+        "skin_score": (latest or {}).get("skin_score"),
+        "completed": today_doc.get("completed", {}),
+        "today_photo": today_doc.get("photo_url"),
+        "today_notes": today_doc.get("notes"),
+        "streak": streak,
+        "subscription_due": day_number > FREE_DAYS,
+        "free_days": FREE_DAYS,
+        "price": TRACKER_PRICE,
+    }
+
+
+@router.post("/tracker/day/complete")
+async def tracker_day_complete(req: DayCompleteRequest, authorization: Optional[str] = Header(None)):
+    """Save today's ticked tasks + optional daily photo & notes. Never blocks
+    (free forever to use); it only records progress for the dashboard + admin."""
+    session = await _user(authorization)
+    email = session["email"]
+    now = _now()
+    date_key = now.strftime("%Y-%m-%d")
+    tracker = await db.trackers.find_one({"email": email}, {"_id": 0}) or {}
+    started = _parse_dt(tracker.get("started_at")) or now
+    day_number = max(1, (now - started).days + 1)
+
+    photo_url = None
+    if req.photo_base64:
+        try:
+            from services import cloudinary_service
+            await cloudinary_service.ensure_configured(db)
+            import base64 as _b64
+            raw = req.photo_base64.split(",", 1)[1] if req.photo_base64.startswith("data:") and "," in req.photo_base64 else req.photo_base64
+            pid = f"tracker/{hashlib.md5(email.encode()).hexdigest()[:8]}/day{day_number}-{int(now.timestamp())}"
+            up = await cloudinary_service.upload_image(db, _b64.b64decode(raw), folder="celesta-tracker", public_id=pid)
+            photo_url = up.get("url")
+        except Exception as e:
+            logger.warning(f"[tracker] day photo upload failed: {e}")
+
+    any_done = any(bool(v) for v in (req.completed or {}).values())
+    set_doc = {
+        "email": email, "date": date_key, "day_number": day_number,
+        "completed": req.completed or {}, "notes": req.notes, "mood": req.mood,
+        "any_done": any_done, "updated_at": _iso(now),
+    }
+    if photo_url:
+        set_doc["photo_url"] = photo_url
+    await db.tracker_days.update_one(
+        {"email": email, "date": date_key},
+        {"$set": set_doc, "$setOnInsert": {"created_at": _iso(now)}},
+        upsert=True,
+    )
+
+    if photo_url:
+        try:
+            await db.tracker_logs.insert_one({
+                "id": hashlib.md5(f"{email}{now.timestamp()}day".encode()).hexdigest(),
+                "email": email, "day_number": day_number, "date": date_key,
+                "photo_url": photo_url, "ai_trend": "daily", "notes": req.notes,
+                "created_at": _iso(now),
+            })
+        except Exception:
+            pass
+    await db.trackers.update_one({"email": email}, {"$set": {"last_log_at": _iso(now)}})
+    streak = await db.tracker_days.count_documents({"email": email, "any_done": True})
+    return {"success": True, "date": date_key, "day_number": day_number,
+            "photo_url": photo_url, "streak": streak,
+            "subscription_due": day_number > FREE_DAYS}
+
 
 
 

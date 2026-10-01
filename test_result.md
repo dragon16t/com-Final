@@ -234,7 +234,7 @@ frontend:
 
   - task: "Rebuilt AI Skin Tracker homepage section (data-testid home-tracker-promo)"
     implemented: true
-    working: "NA"
+    working: true
     file: "pages/Homepage.js"
     stuck_count: 0
     priority: "medium"
@@ -243,11 +243,14 @@ frontend:
         -working: "NA"
         -agent: "main"
         -comment: "Replaced TrackerPromo with rich layout (copy+features+CTA, skin photo strip, Skin Analysis card with before/after + skin score ring + metrics + progress chart, Detailed Analysis + Recommended products). Verified via screenshot. CTA links to /tracker."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ VERIFIED: Skin Analysis card UI layout is clean with no overlaps or misplacements at both desktop (1920x800) and mobile (390x844) viewports. DESKTOP: Header title and date have 41.8px gap (no collision), all 6 metrics (Pores, Acne, Dark Spots, Even Tone, Fine Lines, Hydration) are visible and properly aligned with their values and progress bars, progress chart with +42% pill and all 4 day labels visible, card dimensions 269.5px × 598.1px with no overflow. MOBILE: Header title and date have 69px gap (no collision), all 6 metrics visible, card fits within viewport (324px width with 66px margin), no content overflow. No horizontal overflow detected on page at either viewport. Everything is neatly aligned and nothing spills outside the card. Layout fix is working perfectly."
 
 metadata:
   created_by: "main_agent"
   version: "1.1"
-  test_sequence: 4
+  test_sequence: 6
 
 test_plan:
   current_focus: []
@@ -260,6 +263,8 @@ agent_communication:
     -message: "Two backend items to verify after this iteration. (1) AUTH/OTP: POST /api/auth/send-otp {email} should return success and delivered:true (Gmail SMTP configured via .env). Then verify-otp: fetch the generated OTP from db.customer_otps (or backend logs) and POST /api/auth/verify-otp {email, otp} — expect success:true + a token. Confirm /api/customer/send-otp returns 404 (that was the old wrong path). (2) TAXONOMY REFLECTION: admin edits must reflect on public endpoints — PUT /api/admin/concerns/{slug} (header X-Admin-Token: celestaglow2024) then GET /api/concerns should show the change; same for /api/admin/categories/{slug} -> GET /api/categories. Admin token/password is 'celestaglow2024'. Do NOT delete real concerns/categories — edit a benign field (e.g., description or sort_order) and restore it if needed."
     -agent: "testing"
     -message: "✅ BOTH BACKEND TESTS PASSED (2/2). (1) Customer OTP Login: Complete end-to-end flow working - send-otp returns delivered=true (Gmail SMTP), OTP readable from DB, verify-otp returns valid token + user object, old wrong path /api/customer/send-otp correctly returns 404. (2) Taxonomy Reflection: Admin edits to concerns/categories via PUT /api/admin/* are immediately reflected on public GET /api/concerns and GET /api/categories endpoints. GET /api/niches also working (returns 1 active niche). All changes tested and restored. No issues found."
+    -agent: "testing"
+    -message: "✅ HOMEPAGE AI SKIN TRACKER UI LAYOUT TEST PASSED. Verified the Skin Analysis card (data-testid='home-tracker-promo') at both desktop (1920x800) and mobile (390x844) viewports. All elements are clean with no text overlap, misplacement, or overflow. Header title and date are properly spaced (41.8px gap desktop, 69px gap mobile). All 6 metrics with their values and progress bars are visible and aligned correctly. Progress chart with +42% pill and day labels (Day 1, 7, 14, 30) are all visible. Card fits within viewport on mobile (324px width). No horizontal overflow on page at either viewport. Layout fix is working perfectly - everything is neatly aligned and nothing spills outside the card boundaries."
 
   - task: "AI Skin Tracker enroll endpoint (always free, no payment gate)"
     implemented: true
@@ -335,3 +340,5 @@ test_plan:
 agent_communication:
     -agent: "testing"
     -message: "✅ ALL AI SKIN TRACKER BACKEND TESTS PASSED (5/5). Complete flow tested: (1) OTP authentication working (send-otp + verify-otp), (2) Enroll always returns plan='free' with needs_subscription=false (no payment gate), (3) Scan without photo correctly returns 422 validation error, (4) Scan with real face photo returns complete report with all required fields (skin_score, scores, am_routine, pm_routine, diet, control, recommended_products), (5) Scans list returns array with latest scan, (6) Admin routines endpoint captures tracker_scan entries with source='tracker_scan' and all required fields. All endpoints working correctly. Note: Scan without photo returns HTTP 422 (Pydantic validation) instead of 400 - this is semantically correct for validation errors."
+    -agent: "testing"
+    -message: "VERIFICATION RESULTS (User Request): PART 1 ✅ PASSED - AI before/after image in Skin Analysis card: Image loads successfully (1200x896px), src ends with '/api/uploads/assets/skin-analysis-ai.png', vertical center divider line visible, 'Day 1' (left) and 'Day 30' (right) labels visible with no text overlapping image edges at both desktop (1920x800) and mobile (390x844). PART 2 ❌ CRITICAL ISSUE - Admin image edit for concerns: Backend API works correctly (PATCH /api/admin/concerns/{slug}/image returns 200, GET /api/concerns shows updated image), BUT homepage 'Shop by Concern' section does NOT display images. The CircularCategoryStrip component is configured with showImages={false} and blankCircles={true} at line 403-404 in Homepage.js, rendering concerns as blank colored circles. Admin image edits cannot be verified on homepage because images are not rendered. FIX REQUIRED: Change showImages to true and blankCircles to false in Homepage.js."

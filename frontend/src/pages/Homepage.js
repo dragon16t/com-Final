@@ -249,9 +249,9 @@ function Homepage() {
     // Use allSettled so one aborted request doesn't block the rest.
     Promise.allSettled([
       cachedGet(`${API}/api/combos`, { ttl: 60_000, signal: sig }),
-      cachedGet(`${API}/api/site-settings`, { ttl: 60_000, signal: sig }),
-      cachedGet(`${API}/api/concerns`),
-      cachedGet(`${API}/api/categories`),
+      cachedGet(`${API}/api/site-settings`, { force: true, signal: sig }),
+      cachedGet(`${API}/api/concerns`, { force: true, signal: sig }),
+      cachedGet(`${API}/api/categories`, { force: true, signal: sig }),
     ]).then(([c, s, con, cats]) => {
       if (sig.aborted) return;
       if (c.status === 'fulfilled') setCombos(c.value.data || []);
@@ -657,6 +657,7 @@ const TRACKER_SKIN = {
   healthy: 'https://images.unsplash.com/photo-1728727267814-792db55ce678?crop=entropy&cs=srgb&fm=jpg&q=85&w=500',
   beforeModel: 'https://images.pexels.com/photos/5588000/pexels-photo-5588000.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=600&w=500',
   afterModel: 'https://images.unsplash.com/photo-1728727267814-792db55ce678?crop=entropy&cs=srgb&fm=jpg&q=85&w=500',
+  aiBeforeAfter: `${process.env.REACT_APP_BACKEND_URL}/api/uploads/assets/skin-analysis-ai.png`,
 };
 
 const TRACKER_PRODUCTS = [
@@ -668,14 +669,20 @@ const TRACKER_PRODUCTS = [
 
 function MetricRow({ icon: Icon, label, value, up }) {
   return (
-    <div className="flex items-center gap-2">
-      <Icon size={13} className="text-emerald-600 shrink-0" />
-      <span className="text-[11px] text-stone-600 w-[62px] shrink-0 truncate">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="flex items-center gap-1 text-[11px] text-stone-600 min-w-0">
+          <Icon size={12} className="text-emerald-600 shrink-0" />
+          <span className="truncate">{label}</span>
+        </span>
+        <span className="flex items-center gap-1 shrink-0">
+          <span className="text-[11px] font-bold text-stone-800">{value}</span>
+          <span className="text-[9px] font-semibold text-emerald-600">↑{up}</span>
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-stone-100 overflow-hidden">
         <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600" style={{ width: `${value}%` }} />
       </div>
-      <span className="text-[11px] font-bold text-stone-800 w-6 text-right">{value}</span>
-      <span className="text-[10px] font-semibold text-emerald-600 w-7 text-right">↑{up}</span>
     </div>
   );
 }
@@ -801,37 +808,41 @@ function TrackerPromo() {
           {/* ---------- Column 3: Skin Analysis card ---------- */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-3xl border border-stone-100 shadow-xl shadow-stone-200/50 p-3.5 h-full flex flex-col">
-              <div className="flex items-center justify-between px-1 pb-2.5">
-                <ChevronLeft size={16} className="text-stone-400" />
-                <span className="text-[13px] font-black text-stone-900">Skin Analysis</span>
-                <span className="text-[10px] text-stone-400 font-semibold">12 Sep 2026</span>
+              <div className="flex items-center justify-between gap-2 px-0.5 pb-3">
+                <ChevronLeft size={15} className="text-stone-300 shrink-0" />
+                <span className="text-[13px] font-black text-stone-900 whitespace-nowrap">Skin Analysis</span>
+                <span className="text-[10px] text-stone-400 font-semibold whitespace-nowrap shrink-0">12 Sep 2026</span>
               </div>
-              {/* before / after */}
+              {/* before / after — AI-generated split image with a clean centre divider */}
               <div className="relative rounded-2xl overflow-hidden aspect-[4/3] bg-stone-100">
-                <img src={TRACKER_SKIN.acne} alt="Day 1" className="absolute inset-0 w-1/2 h-full object-cover" />
-                <img src={TRACKER_SKIN.healthy} alt="Day 30" className="absolute right-0 top-0 w-1/2 h-full object-cover" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white shadow-lg flex items-center justify-center">
-                  <ChevronLeft size={11} className="text-stone-500" /><ChevronRight size={11} className="text-stone-500 -ml-1" />
+                <img src={TRACKER_SKIN.aiBeforeAfter} alt="Skin before and after" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-0.5 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)]" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-lg ring-1 ring-black/5 flex items-center justify-center">
+                  <ChevronLeft size={12} className="text-stone-500" /><ChevronRight size={12} className="text-stone-500 -ml-1.5" />
                 </div>
-                <div className="absolute left-0 top-0 bottom-0 w-px bg-white/80 left-1/2" />
-                <span className="absolute left-2.5 bottom-2 text-white text-[11px] font-bold drop-shadow">Day 1</span>
-                <span className="absolute right-2.5 bottom-2 text-white text-[11px] font-bold drop-shadow">Day 30</span>
+                <span className="absolute left-2.5 bottom-2 text-white text-[11px] font-bold drop-shadow-lg bg-black/25 rounded px-1.5 py-0.5">Day 1</span>
+                <span className="absolute right-2.5 bottom-2 text-white text-[11px] font-bold drop-shadow-lg bg-black/25 rounded px-1.5 py-0.5">Day 30</span>
               </div>
-              {/* score + metrics */}
-              <div className="flex items-center gap-3 mt-3.5">
-                <div className="flex flex-col items-center">
-                  <span className="text-[11px] font-semibold text-stone-500 mb-1">Skin Score</span>
-                  <SkinScoreRing score={85} />
+              {/* score header */}
+              <div className="flex items-center gap-3 mt-4">
+                <SkinScoreRing score={85} />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-stone-500">Overall Skin Score</p>
+                  <p className="text-sm font-black text-stone-900 leading-tight">85 / 100</p>
+                  <span className="inline-block mt-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-50 rounded-full px-2 py-0.5">Improving</span>
                 </div>
-                <div className="flex-1 space-y-1.5">
-                  {metrics.map((m) => <MetricRow key={m.label} {...m} />)}
-                </div>
+              </div>
+              {/* metrics grid */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 mt-4">
+                {metrics.map((m) => <MetricRow key={m.label} {...m} />)}
               </div>
               {/* progress chart */}
               <div className="mt-4 pt-3.5 border-t border-stone-100">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2">
                   <span className="text-[12px] font-bold text-stone-800">Your Skin Progress</span>
-                  <span className="text-[10px] font-black text-white bg-emerald-600 rounded-md px-2 py-0.5 leading-tight text-center">+42%<br /><span className="font-semibold">Improvement</span></span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-black text-white bg-emerald-600 rounded-full px-2 py-1 whitespace-nowrap">
+                    <TrendingUp size={11} /> +42%
+                  </span>
                 </div>
                 <svg viewBox="0 0 300 70" className="w-full h-[58px]">
                   <defs>

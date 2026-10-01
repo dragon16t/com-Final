@@ -131,7 +131,7 @@ const SCORE_LABELS = {
 };
 
 /* ----------------------------------------------------------------- REPORT VIEW */
-function ReportView({ report }) {
+function ReportView({ report, onStartRoutine }) {
   if (!report) return null;
   const scores = report.scores || {};
   const Routine = ({ title, icon: Icon, steps }) => (
